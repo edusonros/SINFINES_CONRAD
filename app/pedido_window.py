@@ -1,8 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from utils.db import connect, get_pedido, list_sinfines, create_sinfin, rename_sinfin
-from utils.progress import sinfin_progress, pedido_progress, estado_from_pct
+from utils.db import connect, list_sinfines_por_pedido, add_sinfin, rename_sinfin
 
 
 class PedidoWindow(tk.Toplevel):
@@ -12,128 +11,144 @@ class PedidoWindow(tk.Toplevel):
         self.pedido_id = pedido_id
         self.on_updated_callback = on_updated_callback
 
-        self.title("Pedido – SINFINES CONRAD")
-        self.geometry("900x520")
+        self.title("Pedido — SINFINES CONRAD")
+        self.geometry("900x600")
         self.configure(bg="#1e1e1e")
+
+        # --- Tabla (Treeview) en gris claro ---
+        style = ttk.Style()
+        style.configure(
+            "Conrad.Treeview",
+            background="#d6d6d6",
+            fieldbackground="#d6d6d6",
+            foreground="#111111",
+            rowheight=24,
+            borderwidth=0,
+        )
+        style.map(
+            "Conrad.Treeview",
+            background=[("selected", "#9ecae1")],
+            foreground=[("selected", "#000000")],
+        )
+        style.configure(
+            "Conrad.Treeview.Heading",
+            font=("Segoe UI", 10, "bold"),
+            background="#c2c2c2",
+            foreground="#111111",
+        )
 
         self._build_ui()
         self.refresh()
 
     def _build_ui(self):
-        top = tk.Frame(self, bg="#1e1e1e")
-        top.pack(fill="x", padx=16, pady=12)
+        header = tk.Frame(self, bg="#1e1e1e")
+        header.pack(fill="x", padx=16, pady=(12, 8))
 
         self.lbl_title = tk.Label(
-            top, text="", fg="white", bg="#1e1e1e", font=("Segoe UI", 14, "bold"))
-        self.lbl_title.pack(anchor="w")
-
-        self.lbl_sub = tk.Label(
-            top, text="", fg="#cccccc", bg="#1e1e1e", font=("Segoe UI", 10))
-        self.lbl_sub.pack(anchor="w", pady=(2, 0))
+            header,
+            text="SINFINES DEL PEDIDO",
+            fg="white",
+            bg="#1e1e1e",
+            font=("Segoe UI", 14, "bold"),
+        )
+        self.lbl_title.pack(side="left")
 
         # Tabla sinfines
-        mid = tk.Frame(self, bg="#1e1e1e")
-        mid.pack(fill="both", expand=True, padx=16, pady=10)
+        table = tk.Frame(self, bg="#1e1e1e")
+        table.pack(fill="both", expand=True, padx=16, pady=12)
 
-        cols = ("nombre", "estado", "progreso")
-        self.tree = ttk.Treeview(mid, columns=cols, show="headings", height=14)
-        self.tree.heading("nombre", text="Sinfín")
-        self.tree.heading("estado", text="Estado")
-        self.tree.heading("progreso", text="Progreso")
+        self.tree = ttk.Treeview(
+            table,
+            style="Conrad.Treeview",
+            columns=("nombre",),
+            show="headings",
+            height=18,
+        )
+        self.tree.heading("nombre", text="Sinfines")
+        self.tree.column("nombre", width=600, anchor="w")
 
-        self.tree.column("nombre", width=420, anchor="w")
-        self.tree.column("estado", width=160, anchor="center")
-        self.tree.column("progreso", width=120, anchor="center")
+        yscroll = ttk.Scrollbar(table, orient="vertical",
+                                command=self.tree.yview)
+        self.tree.configure(yscrollcommand=yscroll.set)
 
-        self.tree.pack(fill="both", expand=True)
-
-        self.tree.tag_configure("NO_INICIADO", foreground="#ff6b6b")
-        self.tree.tag_configure("EN_PROCESO", foreground="#ffd166")
-        self.tree.tag_configure("FINALIZADO", foreground="#06d6a0")
+        self.tree.pack(side="left", fill="both", expand=True)
+        yscroll.pack(side="right", fill="y")
 
         self.tree.bind("<Double-1>", lambda e: self.on_open_sinfin())
 
         # Botonera
-        bot = tk.Frame(self, bg="#1e1e1e")
-        bot.pack(fill="x", padx=16, pady=(0, 14))
+        footer = tk.Frame(self, bg="#1e1e1e")
+        footer.pack(fill="x", padx=16, pady=(0, 14))
 
-        ttk.Button(bot, text="➕ Añadir Sinfín",
-                   command=self.on_add_sinfin).pack(side="left", padx=6)
-        ttk.Button(bot, text="✏ Renombrar", command=self.on_rename_sinfin).pack(
-            side="left", padx=6)
-        ttk.Button(bot, text="📂 Abrir Sinfín",
-                   command=self.on_open_sinfin).pack(side="left", padx=6)
-
-        self.lbl_pedido_pct = tk.Label(
-            bot, text="", fg="white", bg="#1e1e1e", font=("Segoe UI", 11, "bold"))
-        self.lbl_pedido_pct.pack(side="right", padx=6)
+        ttk.Button(footer, text="➕ Añadir Sinfín", command=self.on_add_sinfin).pack(
+            side="left", padx=6
+        )
+        ttk.Button(footer, text="✏️ Renombrar", command=self.on_rename_sinfin).pack(
+            side="left", padx=6
+        )
+        ttk.Button(footer, text="🔄 Recargar", command=self.refresh).pack(
+            side="right", padx=6)
 
     def refresh(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
         con = connect()
-        p = get_pedido(con, self.pedido_id)
-        if not p:
-            con.close()
-            messagebox.showerror("Error", "Pedido no encontrado.")
-            self.destroy()
-            return
-
-        pct_pedido = pedido_progress(con, self.pedido_id)
-        estado_pedido = estado_from_pct(pct_pedido)
-
-        self.lbl_title.config(
-            text=f"{p['numero_pedido']}  —  {p['cliente'] or ''}".strip())
-        self.lbl_sub.config(
-            text=f"Entrega: {p['fecha_entrega'] or '-'}   |   Estado: {estado_pedido}")
-        self.lbl_pedido_pct.config(text=f"Progreso pedido: {pct_pedido:.1f}%")
-
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-
-        sinfines = list_sinfines(con, self.pedido_id)
-        for s in sinfines:
-            pct = sinfin_progress(con, s["id"])
-            estado = estado_from_pct(pct)
-            self.tree.insert("", "end", iid=str(s["id"]), values=(
-                s["nombre"], estado, f"{pct:.1f}%"), tags=(estado,))
-
+        sinfines = list_sinfines_por_pedido(con, self.pedido_id)
         con.close()
 
-        if self.on_updated_callback:
-            self.on_updated_callback()
+        for s in sinfines:
+            self.tree.insert("", "end", iid=str(
+                s["id"]), values=(s["nombre"],))
 
     def on_add_sinfin(self):
         con = connect()
-        sinfines = list_sinfines(con, self.pedido_id)
-        n = len(sinfines) + 1
-        new_id = create_sinfin(con, self.pedido_id, f"Sinfín {n}")
+        add_sinfin(con, self.pedido_id)
         con.close()
         self.refresh()
-        self.tree.selection_set(str(new_id))
+        if self.on_updated_callback:
+            self.on_updated_callback()
 
     def on_rename_sinfin(self):
         sel = self.tree.selection()
         if not sel:
-            messagebox.showinfo("Renombrar", "Selecciona un sinfín.")
             return
         sinfin_id = int(sel[0])
+        old = self.tree.item(sel[0], "values")[0]
 
-        old_name = self.tree.item(sel[0], "values")[0]
-        new_name = tk.simpledialog.askstring(
-            "Renombrar", "Nuevo nombre del sinfín:", initialvalue=old_name)
-        if not new_name:
-            return
+        win = tk.Toplevel(self)
+        win.title("Renombrar sinfín")
+        win.configure(bg="#1e1e1e")
+        win.geometry("420x140")
 
-        con = connect()
-        rename_sinfin(con, sinfin_id, new_name)
-        con.close()
-        self.refresh()
+        tk.Label(win, text="Nuevo nombre:", bg="#1e1e1e", fg="white").pack(
+            anchor="w", padx=12, pady=(12, 6)
+        )
+        v = tk.StringVar(value=old)
+        ent = ttk.Entry(win, textvariable=v)
+        ent.pack(fill="x", padx=12)
+
+        def do():
+            new = v.get().strip()
+            if not new:
+                return
+            con = connect()
+            rename_sinfin(con, sinfin_id, new)
+            con.close()
+            win.destroy()
+            self.refresh()
+            if self.on_updated_callback:
+                self.on_updated_callback()
+
+        ttk.Button(win, text="Guardar", command=do).pack(pady=12)
 
     def on_open_sinfin(self):
         sel = self.tree.selection()
         if not sel:
-            messagebox.showinfo("Abrir sinfín", "Selecciona un sinfín.")
             return
         sinfin_id = int(sel[0])
 
-        from app.sinfin_window import SinfinWindow  # import aquí para evitar ciclos
+        # import aquí para evitar ciclos
+        from app.sinfin_window import SinfinWindow
+
         SinfinWindow(self, sinfin_id, on_updated_callback=self.refresh)
