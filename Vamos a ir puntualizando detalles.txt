@@ -1,0 +1,66 @@
+Vamos a ir puntualizando detalles: 
+
+En la pantalla de Inicio, "OFICINA TÉCNICA" Y "PEDIDOS" quiero el tipo de letra mas grande.  Además la tabla, en vez de ser blanca, la quiero en un gris clarito o medio.
+
+En la siguiente tabla "Pedido - SINFINES CONRAD" cuando se abre el pedido, si tiene mas de un sinfín esta bien la tabla de cada sinfín, aunque la tabla también hay que ponerla en gris claro.  
+
+Una vez abrimos el sinfín, las dos pestañas de "Definición" y "Progreso" se deben distinguir mas, que casi no se ve que son dos pestañas.
+
+En la pantalla "DEFINICIÓN DEL SINFIN" me parece bien lo de secciones , pero en "GENERAL", deberíamos añadir una Casilla de "Observaciones", para apuntar posibles datos a mayores a indicar, además de todas estas:
+
+DIAMETRO EXTERIOR ESPIRA:
+ESPESOR ESPIRAS:
+PASO ESPIRAS
+	PASO 1
+	PASO 2
+	PASO 3
+SENTIDO DE GIRO
+LONGITUD ENTRE TESTEROS
+ESPESOR TESTEROS
+ESPESOR BRIDAS
+"TIPO DISPOSICIÓN MOTORREDUCTOR-EJE"
+POSICION MOTOREDUCTOR
+   
+
+En "Parte 001-Tornillo",  deberíamos añadir los mangones de conducción y conducido, como macizos del mismo diámetro, a especificar. De ahí que aparezcan los tornilos, los que deberimaos indicar también en casilla como una lista a elegir de todas la Metricas entre M8 y M30.  EStos datos son los que iran marcando Que rodamientos o a partir de que tubo podemos poner para la camisa. Ademas, se cargan los diametros de los tubos , pero no se  filtran los espesores correspondientes a ese diámetro (se cargan todos). Si te fijas en los valores de la tabla de tubos, hay algunos diámetros que tienen varios espesores.  Además tenemos que añadir la posibilidad de queel tornillo este dividido en varias partes y que estas partes esten unidas por mangones intermedios entre ellas, con la sujeccion pertinente a la parte superior de la camisa, ya sea el caso de camisa redomda o camisa en artesa.
+
+En "Parte 002-Camisa", ya nos debe salir directamente la pantalla consecuentemente a la elección realizada en la pestaña "General", en la cual definíamos la forma de la camisa, ya fuera Artesa, o Tubo Circular, con lo que los parámetros de cada caso serian: 
+
+PARTE 002A: CAMISA TUBO ø	
+Distancia entre Testeros	
+002A.001	Tubo ø exterior / ø interior
+002A.002	Testeros
+002A.003	Ventana Inspeccion
+002A.004	Cjto. sujeccion mangon intermedio
+002A.005	Boca Entrada
+002A.006	Boca Salida
+
+o en el otro caso: 
+PARTE 002B: CAMISA ARTESA	
+Distancia entre Testeros	
+002B.001	Chapa Artesa
+002B.002	Testeros
+002B.003	Ventana Inspeccion
+002B.004	Chapa sujeccion mangon intermedio
+002B.005	Boca Entrada
+002B.006	Boca Salida
+
+Y ya llegamos a las Pestañas "PARTE CONDUCCIÓN" y "PARTE CONDUCIDA"
+que serian:
+PARTE 003:  PARTE CONDUCCION	
+003.001	Brida
+003.002	Prensaestopas
+003.003	Bancada Soporte
+003.004	Cjto Rodamiento
+003.005	Cjto Motor-Reductor
+003.006	Sellado
+
+y
+
+PARTE 004:  PARTE CONDUCIDO	
+004.001	Brida
+004.002	Prensaestopas
+004.003	Bancada Soporte
+004.004	Cjto Rodamiento
+004.005	Sellado
+

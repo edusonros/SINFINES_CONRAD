@@ -1,3 +1,4 @@
+# utils/db.py
 import os
 import sqlite3
 import json
@@ -18,6 +19,7 @@ def now_ts():
     return datetime.now().isoformat(timespec="seconds")
 
 
+# ---------------- PEDIDOS ----------------
 def list_pedidos(con: sqlite3.Connection):
     return con.execute(
         """
@@ -55,6 +57,17 @@ def update_pedido(con: sqlite3.Connection, pedido_id: int, cliente: str, fecha_p
     con.commit()
 
 
+def get_pedido(con: sqlite3.Connection, pedido_id: int):
+    return con.execute(
+        """
+        SELECT id, numero_pedido, cliente, fecha_pedido, fecha_entrega, observaciones
+        FROM pedidos WHERE id = ?
+        """,
+        (pedido_id,),
+    ).fetchone()
+
+
+# ---------------- SINFÍNES ----------------
 def create_sinfin(con: sqlite3.Connection, pedido_id: int, nombre: str):
     ts = now_ts()
     con.execute(
@@ -67,7 +80,7 @@ def create_sinfin(con: sqlite3.Connection, pedido_id: int, nombre: str):
     sinfin_id = con.execute(
         "SELECT last_insert_rowid() AS id").fetchone()["id"]
 
-    # crear estado_tareas para TODAS las tareas activas (por defecto completado=0)
+    # estado_tareas para todas las tareas activas
     tareas = con.execute("SELECT id FROM tareas WHERE activo = 1").fetchall()
     for t in tareas:
         con.execute(
@@ -80,27 +93,6 @@ def create_sinfin(con: sqlite3.Connection, pedido_id: int, nombre: str):
 
     con.commit()
     return sinfin_id
-
-
-def count_sinfines(con: sqlite3.Connection, pedido_id: int) -> int:
-    r = con.execute(
-        "SELECT COUNT(*) AS n FROM sinfines WHERE pedido_id = ?", (pedido_id,)).fetchone()
-    return int(r["n"])
-
-
-def pedido_is_closed(con: sqlite3.Connection, pedido_id: int) -> bool:
-    # lo consideramos cerrado si progreso = 100% (se calcula fuera), pero dejamos función por si luego quieres
-    return False
-
-
-def get_pedido(con: sqlite3.Connection, pedido_id: int):
-    return con.execute(
-        """
-        SELECT id, numero_pedido, cliente, fecha_pedido, fecha_entrega, observaciones
-        FROM pedidos WHERE id = ?
-        """,
-        (pedido_id,),
-    ).fetchone()
 
 
 def list_sinfines(con: sqlite3.Connection, pedido_id: int):
@@ -124,6 +116,43 @@ def rename_sinfin(con: sqlite3.Connection, sinfin_id: int, new_name: str):
     con.commit()
 
 
+def count_sinfines(con: sqlite3.Connection, pedido_id: int) -> int:
+    r = con.execute(
+        "SELECT COUNT(*) AS n FROM sinfines WHERE pedido_id = ?",
+        (pedido_id,)
+    ).fetchone()
+    return int(r["n"])
+
+
+# ---------------- DEFINICIÓN (JSON) ----------------
+def get_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int) -> dict:
+    r = con.execute(
+        "SELECT definicion_json FROM sinfines WHERE id = ?",
+        (sinfin_id,),
+    ).fetchone()
+    if not r or not r["definicion_json"]:
+        return {}
+    try:
+        return json.loads(r["definicion_json"])
+    except Exception:
+        return {}
+
+
+def set_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int, definicion: dict):
+    ts = now_ts()
+    payload = json.dumps(definicion, ensure_ascii=False)
+    con.execute(
+        """
+        UPDATE sinfines
+        SET definicion_json = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (payload, ts, sinfin_id),
+    )
+    con.commit()
+
+
+# ---------------- TAREAS / PROGRESO ----------------
 def list_tareas_por_proceso(con):
     procs = con.execute(
         "SELECT id, nombre FROM procesos ORDER BY orden, id"
@@ -132,7 +161,12 @@ def list_tareas_por_proceso(con):
     out = []
     for p in procs:
         tareas = con.execute(
-            "SELECT id, descripcion AS nombre FROM tareas WHERE proceso_id=? AND activo=1 ORDER BY id",
+            """
+            SELECT id, descripcion AS nombre
+            FROM tareas
+            WHERE proceso_id=? AND activo=1
+            ORDER BY id
+            """,
             (p["id"],)
         ).fetchall()
 
@@ -154,34 +188,9 @@ def set_estado_tarea(con: sqlite3.Connection, sinfin_id: int, tarea_id: int, com
         """
         INSERT INTO estado_tareas (sinfin_id, tarea_id, completado, updated_at)
         VALUES (?, ?, ?, ?)
-        ON CONFLICT(sinfin_id, tarea_id) DO UPDATE SET completado=excluded.completado, updated_at=excluded.updated_at
+        ON CONFLICT(sinfin_id, tarea_id)
+        DO UPDATE SET completado=excluded.completado, updated_at=excluded.updated_at
         """,
         (sinfin_id, tarea_id, int(completado), ts),
-    )
-    con.commit()
-
-
-def get_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int) -> dict:
-    r = con.execute(
-        "SELECT definicion_json FROM sinfines WHERE id = ?",
-        (sinfin_id,),
-    ).fetchone()
-    if not r or not r["definicion_json"]:
-        return {}
-    try:
-        return json.loads(r["definicion_json"])
-    except Exception:
-        return {}
-
-
-def set_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int, definicion: dict):
-    ts = now_ts()
-    con.execute(
-        """
-        UPDATE sinfines
-        SET definicion_json = ?, updated_at = ?
-        WHERE id = ?
-        """,
-        (json.dumps(definicion, ensure_ascii=False), ts, sinfin_id),
     )
     con.commit()
