@@ -174,12 +174,12 @@ def get_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int) -> dict:
         return {}
 
 
-def set_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int, definicion: dict):
-    ts = now_ts()
-    payload = json.dumps(definicion, ensure_ascii=False)
-    con.execute(
-        "UPDATE sinfines SET definicion_json = ?, updated_at = ? WHERE id = ?",
-        (payload, ts, sinfin_id),
+def set_sinfin_definicion(con, sinfin_id: int, data: dict):
+    payload = json.dumps(data, ensure_ascii=False)
+    cur = con.cursor()
+    cur.execute(
+        "UPDATE sinfines SET definicion = ? WHERE id = ?",
+        (payload, sinfin_id),
     )
     con.commit()
 

@@ -5,7 +5,7 @@ import json
 import math
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from utils.db import (
     connect,
@@ -40,6 +40,10 @@ def to_float_optional(x) -> Optional[float]:
         return float(s)
     except Exception:
         return None
+
+
+def _norm_num_text(s: str) -> str:
+    return str(s).strip().replace(",", ".")
 
 
 def _set_dark_style(root: tk.Misc) -> None:
@@ -1039,7 +1043,13 @@ class SinfinWindow(tk.Toplevel):
             self._render_section()
 
     def _on_eje_od_changed(self):
-        od = self.v_eje_od.get().strip()
+        od_raw = self.v_eje_od.get().strip()
+        od = _norm_num_text(od_raw)
+
+        # si quieres, normaliza también el propio StringVar:
+        if od_raw != od:
+            self.v_eje_od.set(od)
+
         espes = filter_espesores_por_od(self.catalogs, od)
         self.cb_eje_thk.configure(values=espes)
 
@@ -1050,12 +1060,20 @@ class SinfinWindow(tk.Toplevel):
         self._auto_from_tubo()
 
     def _on_eje_thk_changed(self):
+        thk_raw = self.v_eje_thk.get().strip()
+        thk = _norm_num_text(thk_raw)
+        if thk_raw != thk:
+            self.v_eje_thk.set(thk)
+
         self._refresh_rodamientos()
         self._auto_from_tubo()
 
     def _refresh_rodamientos(self):
-        vals = filter_rodamientos_por_tubo(
-            self.catalogs, self.v_eje_od.get(), self.v_eje_thk.get())
+        od = _norm_num_text(self.v_eje_od.get())
+        thk = _norm_num_text(self.v_eje_thk.get())
+
+        vals: List[str] = filter_rodamientos_por_tubo(self.catalogs, od, thk)
+
         if hasattr(self, "cb_rod_conduccion"):
             self.cb_rod_conduccion.configure(values=vals)
             if self.v_rod_conduccion.get() and self.v_rod_conduccion.get() not in vals:
@@ -1196,7 +1214,10 @@ class SinfinWindow(tk.Toplevel):
     def _get_observaciones(self) -> str:
         if not self._obs_text:
             return ""
-        return self._obs_text.get("1.0", "end").strip()
+        try:
+            return self._obs_text.get("1.0", "end").strip()
+        except tk.TclError:
+            return ""
 
     def _set_observaciones(self, text: str):
         if not self._obs_text:

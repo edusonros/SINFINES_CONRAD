@@ -10,20 +10,38 @@ ASSEMBLY_PATH = Path(
 )
 
 
+def _to_float(x, *, field=""):
+    s = str(x).strip().replace(",", ".")
+    if not s:
+        raise ValueError(f"Campo vacío: {field}")
+    try:
+        return float(s)
+    except ValueError:
+        raise ValueError(f"No se puede convertir a número ({field}): {x!r}")
+
+
+def fnum(x, default=None) -> float:
+    if x is None or str(x).strip() == "":
+        if default is None:
+            raise ValueError("Número vacío")
+        return float(default)
+    return float(str(x).strip().replace(",", "."))
+
+
 def export_params_to_csv(definicion: dict):
     """
     definicion = JSON completo del sinfín
     """
 
     # --- Datos base desde la app ---
-    L_app = float(definicion["longitud_entre_testeros"])
-    paso = float(definicion["paso_espira"])
-    espesor_testero = float(definicion.get("espesor_testero", 10))
+    L_app = fnum(definicion["longitud_entre_testeros"])
+    paso = fnum(definicion["paso_espira"])
+    espesor_testero = fnum(definicion.get("espesor_testero", 10), default=10)
 
-    diam_tubo_ext = float(definicion["diametro_tubo"])
-    espesor_tubo = float(definicion["espesor_tubo"])
-    diam_espira = float(definicion["diametro_espira"])
-    espesor_chapa = float(definicion["espesor_chapa"])
+    diam_tubo_ext = fnum(definicion["diametro_tubo"])
+    espesor_tubo = fnum(definicion["espesor_tubo"])
+    diam_espira = fnum(definicion["diametro_espira"])
+    espesor_chapa = fnum(definicion["espesor_chapa"])
 
     # --- Correcciones industriales ---
     HOLGURA_MANGONES = 100  # 50 + 50
