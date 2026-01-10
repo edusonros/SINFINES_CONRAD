@@ -7,8 +7,8 @@ DB_PATH = os.path.join(BASE_DIR, "data", "pedidos.db")
 
 PROCESOS = [
     (1, "Material"),
-    (2, "Mecanizacion"),
-    (3, "Caldereria"),
+    (2, "Mecanización"),
+    (3, "Calderería"),
     (4, "Soldadura"),
     (5, "Pintura"),
     (6, "Pruebas"),
@@ -22,17 +22,17 @@ TAREAS = [
     ("Material", "Tubo eje comprado/recibido"),
     ("Material", "Camisa/tubo o chapa artesa comprada/recibida"),
     ("Material", "Chapa testeros comprada/recibida"),
-    ("Material", "Tornilleria/elementos auxiliares recibidos"),
+    ("Material", "Tornillería/elementos auxiliares recibidos"),
 
     # Mecanizacion
-    ("Mecanizacion", "Eje mecanizado"),
-    ("Mecanizacion", "Mangones mecanizados"),
-    ("Mecanizacion", "Alojamiento rodamientos verificado"),
+    ("Mecanización", "Eje mecanizado"),
+    ("Mecanización", "Mangones mecanizados"),
+    ("Mecanización", "Alojamiento rodamientos verificado"),
 
     # Caldereria
-    ("Caldereria", "Espiras cortadas"),
-    ("Caldereria", "Camisa preparada (tubo/artesa)"),
-    ("Caldereria", "Testeros y bridas cortados/taladrados"),
+    ("Calderería", "Espiras cortadas"),
+    ("Calderería", "Camisa preparada (tubo/artesa)"),
+    ("Calderería", "Testeros y bridas cortados/taladrados"),
 
     # Soldadura
     ("Soldadura", "Soldadura espiras-eje"),
@@ -40,23 +40,23 @@ TAREAS = [
     ("Soldadura", "Repaso y limpieza cordones"),
 
     # Pintura
-    ("Pintura", "Preparacion superficie"),
-    ("Pintura", "Imprimacion"),
+    ("Pintura", "Preparación superficie"),
+    ("Pintura", "Imprimación"),
     ("Pintura", "Acabado"),
 
     # Pruebas
     ("Pruebas", "Montaje provisional y giro"),
-    ("Pruebas", "Prueba sin rozamientos/anomalias"),
+    ("Pruebas", "Prueba sin rozamientos/anomalías"),
 
     # Mediciones
-    ("Mediciones", "Verificacion cotas principales"),
+    ("Mediciones", "Verificación cotas principales"),
     ("Mediciones", "Registro mediciones"),
 
     # Manual CE
     ("Manual CE", "Listado materiales (BOM)"),
     ("Manual CE", "Planos PDF emitidos"),
-    ("Manual CE", "Declaracion conformidad"),
-    ("Manual CE", "Manual usuario/instalacion"),
+    ("Manual CE", "Declaración conformidad"),
+    ("Manual CE", "Manual usuario/instalación"),
 ]
 
 
@@ -157,6 +157,37 @@ def init_schema(con: sqlite3.Connection):
     con.commit()
 
 
+def normalize_texts(con: sqlite3.Connection):
+    proceso_updates = {
+        "Mecanizacion": "Mecanización",
+        "Caldereria": "Calderería",
+    }
+
+    tarea_updates = {
+        "Tornilleria/elementos auxiliares recibidos": "Tornillería/elementos auxiliares recibidos",
+        "Preparacion superficie": "Preparación superficie",
+        "Imprimacion": "Imprimación",
+        "Prueba sin rozamientos/anomalias": "Prueba sin rozamientos/anomalías",
+        "Verificacion cotas principales": "Verificación cotas principales",
+        "Declaracion conformidad": "Declaración conformidad",
+        "Manual usuario/instalacion": "Manual usuario/instalación",
+    }
+
+    for old_name, new_name in proceso_updates.items():
+        con.execute(
+            "UPDATE procesos SET nombre = ? WHERE nombre = ?",
+            (new_name, old_name),
+        )
+
+    for old_desc, new_desc in tarea_updates.items():
+        con.execute(
+            "UPDATE tareas SET descripcion = ? WHERE descripcion = ?",
+            (new_desc, old_desc),
+        )
+
+    con.commit()
+
+
 def seed_procesos_y_tareas(con: sqlite3.Connection):
     now = datetime.now().isoformat(timespec="seconds")
 
@@ -186,6 +217,7 @@ def seed_procesos_y_tareas(con: sqlite3.Connection):
 def main():
     con = connect()
     init_schema(con)
+    normalize_texts(con)
     seed_procesos_y_tareas(con)
     con.close()
     print(f"[OK] DB lista en: {DB_PATH}")
