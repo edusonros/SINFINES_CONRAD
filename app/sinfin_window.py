@@ -1046,6 +1046,7 @@ class SinfinWindow(tk.Toplevel):
             self._render_section()
 
     def _on_eje_od_changed(self):
+        hasattr(self, "cb_eje_thk")
         od_raw = self.v_eje_od.get().strip()
         espes = filter_espesores_por_od(self.catalogs, od_raw)
         self.cb_eje_thk.configure(values=espes)
@@ -1112,7 +1113,7 @@ class SinfinWindow(tk.Toplevel):
             self.v_long_total_hint.set(
                 "Falta para calcular: " + " · ".join(missing))
             if self.ent_long_total_ext:
-                self.ent_long_total_ext.config(state="normal")
+                # self.ent_long_total_ext.config(state="normal")
                 self.ent_long_total_ext.config(fg="#ff3b30")  # rojo
                 self.ent_long_total_ext.config(state="readonly")
         else:
@@ -1120,7 +1121,7 @@ class SinfinWindow(tk.Toplevel):
             self.v_long_total_ext.set(f"{total:.0f}")
             self.v_long_total_hint.set("")
             if self.ent_long_total_ext:
-                self.ent_long_total_ext.config(state="normal")
+                # self.ent_long_total_ext.config(state="normal")
                 self.ent_long_total_ext.config(fg="#000000")
                 self.ent_long_total_ext.config(state="readonly")
 
