@@ -178,7 +178,7 @@ def set_sinfin_definicion(con, sinfin_id: int, data: dict):
     payload = json.dumps(data, ensure_ascii=False)
     cur = con.cursor()
     cur.execute(
-        "UPDATE sinfines SET definicion = ? WHERE id = ?",
+        "UPDATE sinfines SET definicion_json = ? WHERE id = ?",
         (payload, sinfin_id),
     )
     con.commit()
