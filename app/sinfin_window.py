@@ -1100,8 +1100,11 @@ class SinfinWindow(tk.Toplevel):
         lc = _to_float_optional(self.v_mangon_ext_conduccion.get())
         ld = _to_float_optional(self.v_mangon_ext_conducido.get())
 
-        missing = []
-        if lt is None:
+        if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
+    ...
+
+      missing = []
+       if lt is None:
             missing.append("Longitud entre testeros")
         if lc is None:
             missing.append("Longitud exterior mangón conducción")
