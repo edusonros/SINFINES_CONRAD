@@ -1,7 +1,11 @@
 import csv
 import math
 from pathlib import Path
-import win32com.client
+
+try:
+    import win32com.client  # type: ignore
+except ModuleNotFoundError:
+    win32com = None
 
 
 ILOGIC_DIR = Path(r"C:\edusonros_projects\SINFINES_CONRAD\iLogic")
@@ -12,6 +16,11 @@ ASSEMBLY_PATH = Path(
 
 
 def run_inventor():
+    if win32com is None:
+        raise RuntimeError(
+            "Falta dependencia 'pywin32' (win32com). Instala con: pip install pywin32"
+        )
+
     try:
         import win32com.client  # noqa
     except ImportError:

@@ -22,7 +22,6 @@ from utils.catalogs import (
     tubo_id_mm,
 )
 from exporter.inventor_export import export_params_to_csv
-from exporter.run_inventor import run_inventor
 
 
 # ------------------ UI Helpers ------------------
@@ -293,7 +292,11 @@ class SinfinWindow(tk.Toplevel):
         try:
             definicion = self._get_definicion_completa()
             export_params_to_csv(definicion)
+
+            # IMPORT DIFERIDO (solo si pulsas el botón)
+            from exporter.run_inventor import run_inventor
             run_inventor()
+
             messagebox.showinfo(
                 "OK", "Planos generados / modelo actualizado en Inventor.")
         except Exception as e:
