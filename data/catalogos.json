@@ -818,5 +818,7 @@
     "M24",
     "M27",
     "M30"
-  ]
+  ],
+  "tipo_disposicion": ["Directo", "Con acoplamiento", "Con cadena", "Con correa"],
+  "posicion_motor": ["Izquierda", "Derecha", "Superior", "Inferior"]
 }

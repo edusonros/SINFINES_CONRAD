@@ -1,8 +1,8 @@
 # utils/db.py
 import os
-import sqlite3
 import json
-from datetime import datetime
+import sqlite3
+from datetime import datetime, date, timedelta
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "data", "pedidos.db")
@@ -19,7 +19,9 @@ def now_ts():
     return datetime.now().isoformat(timespec="seconds")
 
 
-# ---------------- PEDIDOS ----------------
+# =========================
+# PEDIDOS
+# =========================
 def list_pedidos(con: sqlite3.Connection):
     return con.execute(
         """
@@ -28,33 +30,6 @@ def list_pedidos(con: sqlite3.Connection):
         ORDER BY fecha_entrega IS NULL, fecha_entrega ASC, id DESC
         """
     ).fetchall()
-
-
-def create_pedido(con: sqlite3.Connection, numero_pedido: str, cliente: str, fecha_pedido: str, fecha_entrega: str, observaciones: str):
-    ts = now_ts()
-    con.execute(
-        """
-        INSERT INTO pedidos (numero_pedido, cliente, fecha_pedido, fecha_entrega, observaciones, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (numero_pedido.strip(), (cliente or "").strip(), fecha_pedido or None,
-         fecha_entrega or None, (observaciones or "").strip(), ts, ts),
-    )
-    con.commit()
-
-
-def update_pedido(con: sqlite3.Connection, pedido_id: int, cliente: str, fecha_pedido: str, fecha_entrega: str, observaciones: str):
-    ts = now_ts()
-    con.execute(
-        """
-        UPDATE pedidos
-        SET cliente = ?, fecha_pedido = ?, fecha_entrega = ?, observaciones = ?, updated_at = ?
-        WHERE id = ?
-        """,
-        ((cliente or "").strip(), fecha_pedido or None,
-         fecha_entrega or None, (observaciones or "").strip(), ts, pedido_id),
-    )
-    con.commit()
 
 
 def get_pedido(con: sqlite3.Connection, pedido_id: int):
@@ -67,34 +42,66 @@ def get_pedido(con: sqlite3.Connection, pedido_id: int):
     ).fetchone()
 
 
-# ---------------- SINFÍNES ----------------
-def create_sinfin(con: sqlite3.Connection, pedido_id: int, nombre: str):
+def create_pedido(
+    con: sqlite3.Connection,
+    numero_pedido: str,
+    cliente: str,
+    fecha_pedido: str,
+    fecha_entrega: str,
+    observaciones: str,
+) -> int:
     ts = now_ts()
     con.execute(
         """
-        INSERT INTO sinfines (pedido_id, nombre, definicion_json, created_at, updated_at)
-        VALUES (?, ?, NULL, ?, ?)
+        INSERT INTO pedidos (numero_pedido, cliente, fecha_pedido, fecha_entrega, observaciones, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (pedido_id, nombre.strip(), ts, ts),
+        (
+            numero_pedido.strip(),
+            (cliente or "").strip(),
+            fecha_pedido or None,
+            fecha_entrega or None,
+            (observaciones or "").strip(),
+            ts,
+            ts,
+        ),
     )
-    sinfin_id = con.execute(
+    pedido_id = con.execute(
         "SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-    # estado_tareas para todas las tareas activas
-    tareas = con.execute("SELECT id FROM tareas WHERE activo = 1").fetchall()
-    for t in tareas:
-        con.execute(
-            """
-            INSERT OR IGNORE INTO estado_tareas (sinfin_id, tarea_id, completado, updated_at)
-            VALUES (?, ?, 0, ?)
-            """,
-            (sinfin_id, t["id"], ts),
-        )
-
     con.commit()
-    return sinfin_id
+    return int(pedido_id)
 
 
+def update_pedido(
+    con: sqlite3.Connection,
+    pedido_id: int,
+    cliente: str,
+    fecha_pedido: str,
+    fecha_entrega: str,
+    observaciones: str,
+):
+    ts = now_ts()
+    con.execute(
+        """
+        UPDATE pedidos
+        SET cliente = ?, fecha_pedido = ?, fecha_entrega = ?, observaciones = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            (cliente or "").strip(),
+            fecha_pedido or None,
+            fecha_entrega or None,
+            (observaciones or "").strip(),
+            ts,
+            pedido_id,
+        ),
+    )
+    con.commit()
+
+
+# =========================
+# SINFÍNES
+# =========================
 def list_sinfines(con: sqlite3.Connection, pedido_id: int):
     return con.execute(
         """
@@ -107,6 +114,41 @@ def list_sinfines(con: sqlite3.Connection, pedido_id: int):
     ).fetchall()
 
 
+def count_sinfines(con: sqlite3.Connection, pedido_id: int) -> int:
+    r = con.execute(
+        "SELECT COUNT(*) AS n FROM sinfines WHERE pedido_id = ?",
+        (pedido_id,),
+    ).fetchone()
+    return int(r["n"])
+
+
+def create_sinfin(con: sqlite3.Connection, pedido_id: int, nombre: str) -> int:
+    ts = now_ts()
+    con.execute(
+        """
+        INSERT INTO sinfines (pedido_id, nombre, definicion_json, created_at, updated_at)
+        VALUES (?, ?, NULL, ?, ?)
+        """,
+        (pedido_id, nombre.strip(), ts, ts),
+    )
+    sinfin_id = con.execute(
+        "SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    # crear estado_tareas para TODAS las tareas activas (por defecto completado=0)
+    tareas = con.execute("SELECT id FROM tareas WHERE activo = 1").fetchall()
+    for t in tareas:
+        con.execute(
+            """
+            INSERT OR IGNORE INTO estado_tareas (sinfin_id, tarea_id, completado, updated_at)
+            VALUES (?, ?, 0, ?)
+            """,
+            (sinfin_id, t["id"], ts),
+        )
+
+    con.commit()
+    return int(sinfin_id)
+
+
 def rename_sinfin(con: sqlite3.Connection, sinfin_id: int, new_name: str):
     ts = now_ts()
     con.execute(
@@ -116,15 +158,9 @@ def rename_sinfin(con: sqlite3.Connection, sinfin_id: int, new_name: str):
     con.commit()
 
 
-def count_sinfines(con: sqlite3.Connection, pedido_id: int) -> int:
-    r = con.execute(
-        "SELECT COUNT(*) AS n FROM sinfines WHERE pedido_id = ?",
-        (pedido_id,)
-    ).fetchone()
-    return int(r["n"])
-
-
-# ---------------- DEFINICIÓN (JSON) ----------------
+# =========================
+# DEFINICION JSON (SINFÍN)
+# =========================
 def get_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int) -> dict:
     r = con.execute(
         "SELECT definicion_json FROM sinfines WHERE id = ?",
@@ -142,17 +178,15 @@ def set_sinfin_definicion(con: sqlite3.Connection, sinfin_id: int, definicion: d
     ts = now_ts()
     payload = json.dumps(definicion, ensure_ascii=False)
     con.execute(
-        """
-        UPDATE sinfines
-        SET definicion_json = ?, updated_at = ?
-        WHERE id = ?
-        """,
+        "UPDATE sinfines SET definicion_json = ?, updated_at = ? WHERE id = ?",
         (payload, ts, sinfin_id),
     )
     con.commit()
 
 
-# ---------------- TAREAS / PROGRESO ----------------
+# =========================
+# PROCESOS / TAREAS
+# =========================
 def list_tareas_por_proceso(con):
     procs = con.execute(
         "SELECT id, nombre FROM procesos ORDER BY orden, id"
@@ -188,9 +222,16 @@ def set_estado_tarea(con: sqlite3.Connection, sinfin_id: int, tarea_id: int, com
         """
         INSERT INTO estado_tareas (sinfin_id, tarea_id, completado, updated_at)
         VALUES (?, ?, ?, ?)
-        ON CONFLICT(sinfin_id, tarea_id)
-        DO UPDATE SET completado=excluded.completado, updated_at=excluded.updated_at
+        ON CONFLICT(sinfin_id, tarea_id) DO UPDATE
+        SET completado=excluded.completado, updated_at=excluded.updated_at
         """,
         (sinfin_id, tarea_id, int(completado), ts),
     )
     con.commit()
+
+
+# =========================
+# COMPAT: nombres antiguos
+# =========================
+list_sinfines_por_pedido = list_sinfines
+add_sinfin = create_sinfin

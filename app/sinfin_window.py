@@ -1,722 +1,1410 @@
+# app/sinfin_window.py
+from __future__ import annotations
+
+import json
+import math
 import tkinter as tk
 from tkinter import ttk, messagebox
+from typing import Any, Optional
 
 from utils.db import (
     connect,
+    get_sinfin_definicion,
+    set_sinfin_definicion,
     list_tareas_por_proceso,
     get_estado_tarea,
     set_estado_tarea,
-    get_sinfin_definicion,
-    set_sinfin_definicion,
 )
-from utils.progress import sinfin_progress, estado_from_pct
 from utils.catalogs import (
     load_catalogs,
-    espesores_for_od,
-    filter_rodamientos_por_eje,
-    rodamientos_refs,
-    get_rodamiento_by_ref,
+    filter_espesores_por_od,
+    filter_rodamientos_por_tubo,
+    tubo_id_mm,
 )
+from exporter.inventor_export import export_params_to_csv
+from exporter.run_inventor import run_inventor
 
 
-def _to_number(s: str):
-    """Acepta '60,3' o '60.3'. Devuelve float o None."""
-    if s is None:
-        return None
-    s = str(s).strip()
+# ------------------ UI Helpers ------------------
+
+def to_float_required(x) -> float:
+    s = str(x).strip().replace(",", ".")
+    return float(s)
+
+
+def to_float_optional(x) -> Optional[float]:
+    s = str(x).strip().replace(",", ".")
     if not s:
         return None
-    s = s.replace(",", ".")
     try:
         return float(s)
-    except ValueError:
+    except Exception:
         return None
 
 
-def _fmt_mm(x) -> str:
-    """Formatea mm a string estilo ES: '60,3' y sin ',0'."""
+def _set_dark_style(root: tk.Misc) -> None:
+    """
+    Ajustes de estilo ttk (dark) sin depender de temas externos.
+    """
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")
+    except Exception:
+        pass
+
+    bg = "#1e1e1e"
+    fg = "#ffffff"
+    accent = "#00bcd4"
+    panel = "#252526"
+    entry_bg = "#ffffff"
+
+    # Base
+    style.configure(".", background=bg, foreground=fg)
+    style.configure("TFrame", background=bg)
+    style.configure("TLabel", background=bg, foreground=fg)
+    style.configure("TLabelframe", background=bg, foreground=fg)
+    style.configure(
+        "TLabelframe.Label",
+        background=bg,
+        foreground=fg,
+        font=("Segoe UI", 10, "bold"),
+    )
+
+    # Buttons
+    style.configure("TButton", font=("Segoe UI", 10))
+    style.map("TButton", background=[("active", "#f0f0f0")])
+
+    # Entries / Combos
+    style.configure("TEntry", fieldbackground=entry_bg, foreground="#000000")
+    style.configure("TCombobox", fieldbackground=entry_bg,
+                    foreground="#000000")
+
+    # Combobox estilos específicos (para "pendiente medir")
+    style.configure("Normal.TCombobox",
+                    fieldbackground=entry_bg, foreground="#000000")
+    style.configure("Pending.TCombobox",
+                    fieldbackground=entry_bg, foreground="#ff3b30")
+    style.map(
+        "Pending.TCombobox",
+        foreground=[("readonly", "#ff3b30"), ("!disabled", "#ff3b30")],
+    )
+    style.map(
+        "Normal.TCombobox",
+        foreground=[("readonly", "#000000"), ("!disabled", "#000000")],
+    )
+
+    # Notebook
+    style.configure("TNotebook", background=bg, borderwidth=0)
+    style.configure(
+        "TNotebook.Tab",
+        padding=(18, 10),
+        font=("Segoe UI", 11, "bold"),
+        background=panel,
+        foreground=fg,
+    )
+    style.map(
+        "TNotebook.Tab",
+        background=[("selected", accent), ("active", "#3a3a3a")],
+        foreground=[("selected", "#000000"), ("active", fg)],
+    )
+
+    # Treeview (gris claro)
+    tv_bg = "#d9d9d9"
+    tv_head = "#cfcfcf"
+    style.configure(
+        "Treeview",
+        background=tv_bg,
+        fieldbackground=tv_bg,
+        foreground="#000000",
+        rowheight=26,
+    )
+    style.configure(
+        "Treeview.Heading",
+        background=tv_head,
+        foreground="#000000",
+        font=("Segoe UI", 10, "bold"),
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", "#4a90e2")],
+        foreground=[("selected", "#ffffff")],
+    )
+
+
+def _safe_float_text(x: Any) -> str:
     if x is None:
         return ""
-    try:
-        f = float(x)
-    except Exception:
-        return str(x).strip()
-
-    if abs(f - round(f)) < 1e-9:
-        return str(int(round(f)))
-    s = f"{f:.1f}".replace(".", ",")
+    s = str(x).strip()
+    if not s:
+        return ""
     return s
+
+
+# ------------------ Main Window ------------------
 
 
 class SinfinWindow(tk.Toplevel):
     def __init__(self, parent, sinfin_id: int, on_updated_callback=None):
         super().__init__(parent)
-        self.parent = parent
-        self.sinfin_id = sinfin_id
-        self.on_updated_callback = on_updated_callback
-
         self.title("Sinfín – Definición / Progreso")
         self.geometry("1100x720")
         self.configure(bg="#1e1e1e")
+        self.minsize(980, 620)
 
-        # Cargar catálogos (JSON)
+        self.sinfin_id = sinfin_id
+        self.on_updated_callback = on_updated_callback
+
+        _set_dark_style(self)
+
+        # Cargar catálogos desde JSON
         self.catalogs = load_catalogs()
 
-        # ===== Vars - GENERAL =====
-        self.v_material = tk.StringVar()
-        self.v_camisa_tipo = tk.StringVar(value="ARTESA")  # ARTESA | CIRCULAR
-        self.v_sentido = tk.StringVar(
-            value="DERECHAS")  # DERECHAS | IZQUIERDAS
-        self.v_long_test = tk.StringVar()
-        self.v_tipo_disposicion = tk.StringVar()
-        self.v_observaciones = tk.StringVar()
+        # ---------------- Vars (Definición) ----------------
+        self.v_section = tk.StringVar(value="General")
 
-        # ===== Vars - PARTE 001 (TORNILLO) =====
+        # GENERAL
+        self.v_material = tk.StringVar()
+        self.v_camisa_tipo = tk.StringVar(
+            value="CIRCULAR")  # CIRCULAR / ARTESA
+        self.v_sentido = tk.StringVar(
+            value="DERECHAS")  # DERECHAS / IZQUIERDAS
+
+        # Longitud entre testeros ahora es LISTA (Combobox)
+        self.v_long_test = tk.StringVar()
+
+        self.v_pendiente_medir = tk.BooleanVar(value=False)
+
+        # Longitud total exterior calculada
+        self.v_long_total_ext = tk.StringVar(value="")
+        self.v_long_total_hint = tk.StringVar(value="")
+
+        self._obs_text: Optional[tk.Text] = None
+
+        # (Disposición motor) -> se muestra en Conducción (Parte 003)
+        self.v_tipo_dispos = tk.StringVar()
+
+        # PARTE 001 – TORNILLO
         self.v_eje_od = tk.StringVar()
         self.v_eje_thk = tk.StringVar()
-        self.v_diam_ext_espira = tk.StringVar()
+
+        # Automático: mangón Ø (macizo) (lo rellena _auto_from_tubo si está vacío)
+        self.v_mangon_conduccion = tk.StringVar()
+        self.v_mangon_conducido = tk.StringVar()
+
+        # Longitudes exteriores mangones (para L total exterior)
+        self.v_mangon_ext_conduccion = tk.StringVar()
+        self.v_mangon_ext_conducido = tk.StringVar()
+
+        self.v_mangones_intermedios = tk.BooleanVar(value=False)
+        self.v_num_mangones_intermedios = tk.StringVar()
+        self.v_diam_mangon_intermedio = tk.StringVar()
+
+        # Tornillería automática (texto)
+        self.v_metrica_tornillos = tk.StringVar()
+
+        # Espiras/pasos
+        self.v_diam_espira = tk.StringVar()
         self.v_espesor_espira = tk.StringVar()
-        self.v_paso_1 = tk.StringVar()
-        self.v_paso_2 = tk.StringVar()
-        self.v_paso_3 = tk.StringVar()
-        self.v_tornillos_metrica = tk.StringVar()
-        self.v_tornillos_num = tk.StringVar()
-        self.v_mangon_conduccion_d = tk.StringVar()
-        self.v_mangon_conducido_d = tk.StringVar()
+        self.v_paso1 = tk.StringVar()
+        self.v_paso2 = tk.StringVar()
+        self.v_paso3 = tk.StringVar()
 
-        # Tornillo en tramos
-        self.v_num_tramos = tk.StringVar(value="1")
-        self.v_num_mangones_intermedios = tk.StringVar(value="0")
-        self.v_sujecion_mangon_intermedio = tk.StringVar(value="NINGUNA")
+        # PARTE 002 – CAMISA (ahora con filas de “subconjuntos”)
+        self.v_dist_testeros = tk.StringVar()
 
-        # ===== Vars - PARTE 002 (CAMISA) =====
-        # Circular
-        self.v_camisa_tubo_od = tk.StringVar()
-        self.v_camisa_tubo_id = tk.StringVar()
-        self.v_camisa_testeros_thk = tk.StringVar()
-        self.v_camisa_ventana = tk.StringVar()
-        self.v_camisa_boca_entrada = tk.StringVar()
-        self.v_camisa_boca_salida = tk.StringVar()
-        self.v_camisa_suj_mangon = tk.StringVar()
+        # 002A
+        self.v_002A_tubo = tk.StringVar()
+        self.v_002A_testeros = tk.StringVar()
+        self.v_002A_ventana_inspeccion = tk.StringVar()
+        self.v_002A_suj_mangon_intermedio = tk.StringVar()
+        self.v_002A_boca_entrada = tk.StringVar()
+        self.v_002A_boca_salida = tk.StringVar()
 
-        # Artesa
-        self.v_artesa_chapa = tk.StringVar()
-        self.v_artesa_testeros_thk = tk.StringVar()
-        self.v_artesa_ventana = tk.StringVar()
-        self.v_artesa_suj_mangon = tk.StringVar()
-        self.v_artesa_boca_entrada = tk.StringVar()
-        self.v_artesa_boca_salida = tk.StringVar()
+        # 002B
+        self.v_002B_chapa_artesa = tk.StringVar()
+        self.v_002B_testeros = tk.StringVar()
+        self.v_002B_ventana_inspeccion = tk.StringVar()
+        self.v_002B_suj_mangon_intermedio = tk.StringVar()
+        self.v_002B_boca_entrada = tk.StringVar()
+        self.v_002B_boca_salida = tk.StringVar()
 
-        # ===== Vars - PARTE 003 (CONDUCCIÓN) =====
-        self.v_rodamiento_ref = tk.StringVar()
+        # PARTE 003 – CONDUCCIÓN
+        self.v_rod_conduccion = tk.StringVar()
         self.v_pos_motor = tk.StringVar()
 
-        # ===== Vars - PARTE 004 (CONDUCIDO) =====
-        self.v_conducido_brida = tk.StringVar()
-        self.v_conducido_prensaestopas = tk.StringVar()
-        self.v_conducido_bancada = tk.StringVar()
-        self.v_conducido_cjto_rodamiento = tk.StringVar()
-        self.v_conducido_sellado = tk.StringVar()
+        # PARTE 004 – CONDUCIDO
+        self.v_rod_conducido = tk.StringVar()
 
-        # ===== Vars progreso =====
-        self.vars_checks = {}  # tarea_id -> IntVar
+        # refs widgets
+        self.cb_long_test: Optional[ttk.Combobox] = None
+        self.ent_long_total_ext: Optional[tk.Entry] = None
 
+        # progreso: mapping iid->tarea_id
+        self._tree_item_to_tarea_id: dict[str, int] = {}
+
+        # traces
+        self.v_long_test.trace_add(
+            "write", lambda *_: self._recalc_longitudes())
+        self.v_mangon_ext_conduccion.trace_add(
+            "write", lambda *_: self._recalc_longitudes())
+        self.v_mangon_ext_conducido.trace_add(
+            "write", lambda *_: self._recalc_longitudes())
+        self.v_pendiente_medir.trace_add(
+            "write", lambda *_: self._apply_pending_style())
+
+        # ---------------- Build UI ----------------
         self._build_ui()
-        self.load_all()
+        self._load_all()
 
-    # ---------------- UI ----------------
+    def _get_definicion_completa(self) -> dict:
+        """
+        Devuelve un dict con todos los parámetros necesarios para exportar a Inventor.
+        (Si falta alguno, lanzamos error con messagebox)
+        """
+        # Ejemplo mínimo para que export_params_to_csv no reviente:
+        # Ajusta los nombres para que coincidan con inventor_export.py
+        d = {
+            "longitud_entre_testeros": self.v_long_test.get().strip(),
+            "paso_espira": self.v_paso1.get().strip(),
+            "diametro_tubo": self.v_eje_od.get().strip(),
+            "espesor_tubo": self.v_eje_thk.get().strip(),
+            "diametro_espira": self.v_diam_espira.get().strip(),
+            "espesor_chapa": self.v_espesor_espira.get().strip(),
+            # opcional
+            "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
+        }
+
+        # Validación rápida
+        faltan = [k for k, v in d.items() if not str(v).strip()]
+        if faltan:
+            raise ValueError(
+                "Faltan datos para generar planos: " + ", ".join(faltan))
+
+        return d
+
+    def _on_generar_planos(self):
+        """
+        Exporta params.csv y ejecuta Inventor+iLogic.
+        """
+        try:
+            definicion = self._get_definicion_completa()
+            export_params_to_csv(definicion)
+            run_inventor()
+            messagebox.showinfo(
+                "OK", "Planos generados / modelo actualizado en Inventor.")
+        except Exception as e:
+            messagebox.showerror("Error al generar planos", str(e))
+
+    # ------------------ UI Layout ------------------
+
     def _build_ui(self):
-        # Notebook (pestañas más visibles)
-        style = ttk.Style()
-        style.configure("Conrad.TNotebook",
-                        background="#1e1e1e", borderwidth=0)
-        style.configure(
-            "Conrad.TNotebook.Tab",
-            font=("Segoe UI", 11, "bold"),
-            padding=(20, 12),
-            background="#2b2b2b",
-            foreground="white",
-        )
-        style.map(
-            "Conrad.TNotebook.Tab",
-            background=[("selected", "#00bcd4"), ("active", "#3a3a3a")],
-            foreground=[("selected", "#000000"), ("active", "white")],
-        )
+        nb = ttk.Notebook(self)
+        nb.pack(fill="both", expand=True, padx=12, pady=12)
 
-        self.nb = ttk.Notebook(self, style="Conrad.TNotebook")
-        self.nb.pack(fill="both", expand=True, padx=14, pady=12)
+        self.tab_def = ttk.Frame(nb)
+        self.tab_prog = ttk.Frame(nb)
 
-        self.tab_def = tk.Frame(self.nb, bg="#1e1e1e")
-        self.tab_prog = tk.Frame(self.nb, bg="#1e1e1e")
-
-        self.nb.add(self.tab_def, text="Definición")
-        self.nb.add(self.tab_prog, text="Progreso")
+        nb.add(self.tab_def, text="Definición")
+        nb.add(self.tab_prog, text="Progreso")
 
         self._build_def_tab()
         self._build_progress_tab()
 
     def _build_def_tab(self):
-        top = tk.Frame(self.tab_def, bg="#1e1e1e")
-        top.pack(fill="x", padx=10, pady=(10, 8))
+        # Header
+        header = ttk.Frame(self.tab_def)
+        header.pack(fill="x", padx=16, pady=(14, 10))
 
-        tk.Label(
-            top,
-            text="DEFINICIÓN DEL SINFÍN",
-            fg="white",
-            bg="#1e1e1e",
-            font=("Segoe UI", 12, "bold"),
-        ).pack(side="left")
-
-        ttk.Button(top, text="💾 Guardar definición", command=self.save_definition).pack(
-            side="right", padx=6
-        )
-        ttk.Button(top, text="🔄 Recargar", command=self.load_definition).pack(
-            side="right", padx=6
+        ttk.Label(header, text="DEFINICIÓN DEL SINFÍN", font=("Segoe UI", 14, "bold")).pack(
+            side="left"
         )
 
-        body = tk.Frame(self.tab_def, bg="#1e1e1e")
-        body.pack(fill="both", expand=True, padx=10, pady=10)
+        btns = ttk.Frame(header)
+        btns.pack(side="right")
 
-        # Lateral: secciones
-        left = tk.Frame(body, bg="#1e1e1e")
-        left.pack(side="left", fill="y", padx=(0, 10))
+        ttk.Button(btns, text="Recargar", command=self._load_definition).pack(
+            side="left", padx=(0, 10)
+        )
+        ttk.Button(btns, text="Guardar definición", command=self._save_definition).pack(
+            side="left"
+        )
+        ttk.Button(btns, text="Generar Planos", command=self._on_generar_planos).pack(
+            side="left", padx=(0, 10)
+        )
 
-        tk.Label(
-            left, text="Secciones", fg="white", bg="#1e1e1e", font=("Segoe UI", 10, "bold")
-        ).pack(anchor="w", pady=(0, 6))
+        # Body
+        body = ttk.Frame(self.tab_def)
+        body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 
-        self.section = tk.StringVar(value="GENERAL")
+        left = ttk.Frame(body, width=220)
+        left.pack(side="left", fill="y")
+        left.pack_propagate(False)
 
-        def add_section(text, key):
-            rb = tk.Radiobutton(
+        ttk.Label(left, text="Secciones", font=("Segoe UI", 11, "bold")).pack(
+            anchor="w", pady=(0, 8)
+        )
+
+        def add_section(name: str):
+            rb = ttk.Radiobutton(
                 left,
-                text=text,
-                value=key,
-                variable=self.section,
-                command=self._show_section,
-                bg="#1e1e1e",
-                fg="#cccccc",
-                selectcolor="#1e1e1e",
-                activebackground="#1e1e1e",
-                activeforeground="#ffffff",
-                anchor="w",
+                text=name,
+                value=name,
+                variable=self.v_section,
+                command=self._render_section,
             )
-            rb.pack(fill="x", anchor="w", pady=2)
+            rb.pack(anchor="w", pady=4)
 
-        add_section("General", "GENERAL")
-        add_section("Parte 001 – Tornillo", "T001")
-        add_section("Parte 002 – Camisa", "T002")
-        add_section("Parte 003 – Conducción", "T003")
-        add_section("Parte 004 – Conducido", "T004")
+        add_section("General")
+        add_section("Parte 001 – Tornillo")
+        add_section("Parte 002 – Camisa")
+        add_section("Parte 003 – Conducción")
+        add_section("Parte 004 – Conducido")
 
-        # Panel derecho: contenido variable
-        self.right = tk.Frame(body, bg="#1e1e1e")
-        self.right.pack(side="left", fill="both", expand=True)
+        ttk.Separator(body, orient="vertical").pack(
+            side="left", fill="y", padx=14)
 
-        self.frames = {}
+        # Right content (scrollable)
+        self.right_container = ttk.Frame(body)
+        self.right_container.pack(side="left", fill="both", expand=True)
 
-        self.frames["GENERAL"] = tk.Frame(self.right, bg="#1e1e1e")
-        self.frames["T001"] = tk.Frame(self.right, bg="#1e1e1e")
-        self.frames["T002"] = tk.Frame(self.right, bg="#1e1e1e")
-        self.frames["T003"] = tk.Frame(self.right, bg="#1e1e1e")
-        self.frames["T004"] = tk.Frame(self.right, bg="#1e1e1e")
+        self._canvas = tk.Canvas(self.right_container,
+                                 bg="#1e1e1e", highlightthickness=0)
+        self._canvas.pack(side="left", fill="both", expand=True)
 
-        for f in self.frames.values():
-            f.place(relx=0, rely=0, relwidth=1, relheight=1)
+        vsb = ttk.Scrollbar(self.right_container,
+                            orient="vertical", command=self._canvas.yview)
+        vsb.pack(side="right", fill="y")
+        self._canvas.configure(yscrollcommand=vsb.set)
 
-        self._build_def_general(self.frames["GENERAL"])
-        self._build_def_tornillo(self.frames["T001"])
-        self._build_def_camisa(self.frames["T002"])
-        self._build_def_conduccion(self.frames["T003"])
-        self._build_def_conducido(self.frames["T004"])
+        self.right = ttk.Frame(self._canvas)
+        self._canvas.create_window((0, 0), window=self.right, anchor="nw")
 
-        self._show_section()
-
-    def _section_title(self, parent, title: str):
-        tk.Label(
-            parent, text=title, fg="white", bg="#1e1e1e", font=("Segoe UI", 11, "bold")
-        ).pack(anchor="w", pady=(0, 10))
-
-    def _row(self, parent, label: str, widget):
-        row = tk.Frame(parent, bg="#1e1e1e")
-        row.pack(fill="x", pady=6)
-        tk.Label(
-            row, text=label, fg="#cccccc", bg="#1e1e1e", font=("Segoe UI", 10), width=30, anchor="w"
-        ).pack(side="left")
-        widget.pack(side="left", fill="x", expand=True)
-        return row
-
-    def _build_def_general(self, parent):
-        self._section_title(parent, "GENERAL")
-
-        mats = self.catalogs.get("materials", [])
-        cb_mat = ttk.Combobox(
-            parent, textvariable=self.v_material, values=mats, state="readonly")
-        self._row(parent, "Material", cb_mat)
-
-        # Camisa tipo (excluyente)
-        box_cam = tk.Frame(parent, bg="#1e1e1e")
-        rb1 = ttk.Radiobutton(
-            box_cam, text="Artesa", value="ARTESA", variable=self.v_camisa_tipo, command=self._on_camisa_changed
+        self.right.bind(
+            "<Configure>",
+            lambda _e=None: self._canvas.configure(
+                scrollregion=self._canvas.bbox("all")),
         )
-        rb2 = ttk.Radiobutton(
-            box_cam, text="Tubo circular", value="CIRCULAR", variable=self.v_camisa_tipo, command=self._on_camisa_changed
-        )
-        rb1.pack(side="left", padx=(0, 12))
-        rb2.pack(side="left")
-        self._row(parent, "Forma de la camisa", box_cam)
 
-        # Sentido giro (excluyente)
-        box_giro = tk.Frame(parent, bg="#1e1e1e")
-        rg1 = ttk.Radiobutton(box_giro, text="A derechas",
-                              value="DERECHAS", variable=self.v_sentido)
-        rg2 = ttk.Radiobutton(box_giro, text="A izquierdas",
-                              value="IZQUIERDAS", variable=self.v_sentido)
-        rg1.pack(side="left", padx=(0, 12))
-        rg2.pack(side="left")
-        self._row(parent, "Sentido de giro", box_giro)
+        self._render_section()
 
-        ent_L = ttk.Entry(parent, textvariable=self.v_long_test)
-        self._row(parent, "Longitud entre testeros (mm) [libre]", ent_L)
-
-        # Tipo disposición motorreductor-eje
-        tipos = self.catalogs.get("tipo_disposicion", [])
-        cb_tipo = ttk.Combobox(
-            parent, textvariable=self.v_tipo_disposicion, values=tipos, state="readonly")
-        self._row(parent, "Tipo disposición motorreductor-eje", cb_tipo)
-
-        # Observaciones
-        ent_obs = ttk.Entry(parent, textvariable=self.v_observaciones)
-        self._row(parent, "Observaciones", ent_obs)
-
-        tk.Label(
-            parent,
-            text="(Posición motorreductor se define en Conducción.)",
-            fg="#777777",
-            bg="#1e1e1e",
-            font=("Segoe UI", 9),
-        ).pack(anchor="w", pady=(10, 0))
-
-    def _build_def_tornillo(self, parent):
-        self._section_title(parent, "PARTE 001 – TORNILLO")
-
-        ods = self.catalogs.get("eje_od", [])
-        self.cb_od = ttk.Combobox(
-            parent, textvariable=self.v_eje_od, values=ods, state="readonly")
-        self._row(parent, "Ø exterior tubo eje (mm)", self.cb_od)
-        self.cb_od.bind("<<ComboboxSelected>>",
-                        lambda e: self._refresh_espesores())
-
-        # Espesor tubo (filtrado por OD)
-        self.cb_thk = ttk.Combobox(
-            parent, textvariable=self.v_eje_thk, values=[], state="readonly")
-        self._row(parent, "Espesor tubo eje (mm)", self.cb_thk)
-
-        diam = self.catalogs.get("diam_espira", [])
-        cb_de = ttk.Combobox(
-            parent, textvariable=self.v_diam_ext_espira, values=diam, state="readonly")
-        self._row(parent, "Ø exterior espira (mm)", cb_de)
-
-        espes_chapa = self.catalogs.get("espesores_chapa", [])
-        cb_esp = ttk.Combobox(
-            parent, textvariable=self.v_espesor_espira, values=espes_chapa, state="readonly")
-        self._row(parent, "Espesor espira (mm)", cb_esp)
-
-        pasos = self.catalogs.get("pasos", [])
-        cb_p1 = ttk.Combobox(parent, textvariable=self.v_paso_1,
-                             values=pasos, state="readonly")
-        cb_p2 = ttk.Combobox(parent, textvariable=self.v_paso_2,
-                             values=pasos, state="readonly")
-        cb_p3 = ttk.Combobox(parent, textvariable=self.v_paso_3,
-                             values=pasos, state="readonly")
-        self._row(parent, "Paso 1 (mm)", cb_p1)
-        self._row(parent, "Paso 2 (mm) [opcional]", cb_p2)
-        self._row(parent, "Paso 3 (mm) [opcional]", cb_p3)
-
-        # Tornillería (métrica)
-        metricas = [f"M{x}" for x in (
-            8, 10, 12, 14, 16, 18, 20, 22, 24, 27, 30)]
-        cb_met = ttk.Combobox(
-            parent, textvariable=self.v_tornillos_metrica, values=metricas, state="readonly")
-        self._row(parent, "Tornillería (métrica)", cb_met)
-
-        ent_num = ttk.Entry(parent, textvariable=self.v_tornillos_num)
-        self._row(parent, "Tornillería (nº tornillos)", ent_num)
-
-        # Mangones conducción / conducido (macizos)
-        dims = self.catalogs.get("eje_dim", [])
-        cb_m1 = ttk.Combobox(
-            parent, textvariable=self.v_mangon_conduccion_d, values=dims, state="readonly")
-        cb_m2 = ttk.Combobox(
-            parent, textvariable=self.v_mangon_conducido_d, values=dims, state="readonly")
-        self._row(parent, "Mangón conducción Ø (mm)", cb_m1)
-        self._row(parent, "Mangón conducido Ø (mm)", cb_m2)
-
-        # Tornillo en tramos
-        ent_tr = ttk.Entry(parent, textvariable=self.v_num_tramos)
-        ent_mi = ttk.Entry(
-            parent, textvariable=self.v_num_mangones_intermedios)
-        self._row(parent, "Nº tramos tornillo", ent_tr)
-        self._row(parent, "Nº mangones intermedios", ent_mi)
-
-        suj = ["NINGUNA", "SOPORTE CAMISA", "ABRAZADERA", "CARTELA/CHAPA"]
-        cb_suj = ttk.Combobox(
-            parent, textvariable=self.v_sujecion_mangon_intermedio, values=suj, state="readonly")
-        self._row(parent, "Sujeción mangón intermedio", cb_suj)
-
-        self._refresh_espesores()
-
-    def _build_def_camisa(self, parent):
-        self._section_title(parent, "PARTE 002 – CAMISA")
-
-        self.camisa_container = tk.Frame(parent, bg="#1e1e1e")
-        self.camisa_container.pack(fill="both", expand=True)
-
-        self._render_camisa_panel()
-
-    def _render_camisa_panel(self):
-        for w in self.camisa_container.winfo_children():
+    def _clear_right(self):
+        for w in self.right.winfo_children():
             w.destroy()
 
-        if self.v_camisa_tipo.get().strip().upper() == "CIRCULAR":
-            tk.Label(
-                self.camisa_container,
-                text="PARTE 002A: CAMISA TUBO Ø",
-                fg="white",
-                bg="#1e1e1e",
-                font=("Segoe UI", 11, "bold"),
-            ).pack(anchor="w", pady=(0, 10))
+    def _make_form(self, title: str, cols: int = 2) -> ttk.Frame:
+        """
+        Crea un bloque con título y devuelve el frame 'form' para añadir filas.
+        cols=2: [label][widget]
+        cols=3: [label][widget][acción]
+        """
+        title_lbl = ttk.Label(self.right, text=title,
+                              font=("Segoe UI", 12, "bold"))
+        title_lbl.pack(anchor="w", pady=(0, 10))
 
-            self._row(self.camisa_container, "Distancia entre testeros", ttk.Entry(
-                self.camisa_container, textvariable=self.v_long_test))
-            self._row(self.camisa_container, "Tubo Ø exterior", ttk.Entry(
-                self.camisa_container, textvariable=self.v_camisa_tubo_od))
-            self._row(self.camisa_container, "Tubo Ø interior", ttk.Entry(
-                self.camisa_container, textvariable=self.v_camisa_tubo_id))
-            self._row(self.camisa_container, "Testeros (espesor)", ttk.Entry(
-                self.camisa_container, textvariable=self.v_camisa_testeros_thk))
-            self._row(self.camisa_container, "Ventana inspección", ttk.Entry(
-                self.camisa_container, textvariable=self.v_camisa_ventana))
-            self._row(self.camisa_container, "Cjto. sujeción mangón intermedio", ttk.Entry(
-                self.camisa_container, textvariable=self.v_camisa_suj_mangon))
-            self._row(self.camisa_container, "Boca entrada", ttk.Entry(
-                self.camisa_container, textvariable=self.v_camisa_boca_entrada))
-            self._row(self.camisa_container, "Boca salida", ttk.Entry(
-                self.camisa_container, textvariable=self.v_camisa_boca_salida))
+        outer = ttk.Frame(self.right)
+        outer.pack(fill="x", padx=6)
+
+        form = ttk.Frame(outer)
+        form.pack(fill="x")
+
+        form.grid_columnconfigure(0, weight=0, minsize=260)  # labels
+        form.grid_columnconfigure(1, weight=1)  # inputs
+        if cols >= 3:
+            form.grid_columnconfigure(2, weight=0, minsize=200)  # actions
+
+        return form
+
+    def _add_row(
+        self,
+        form: ttk.Frame,
+        row: int,
+        label: str,
+        widget: tk.Widget,
+        *,
+        action_widget: Optional[tk.Widget] = None,
+        hint: Optional[str] = None,
+        height: Optional[int] = None,
+        expand: bool = True,
+    ) -> int:
+        ttk.Label(form, text=label).grid(
+            row=row, column=0, sticky="w", padx=(0, 14), pady=6)
+
+        if isinstance(widget, tk.Text):
+            wrap = ttk.Frame(form)
+            wrap.grid(row=row, column=1, sticky="we", pady=6)
+            wrap.grid_columnconfigure(0, weight=1)
+            widget.configure(
+                height=height or 4,
+                wrap="word",
+                bg="#ffffff",
+                fg="#000000",
+                insertbackground="#000000",
+            )
+            widget.grid(in_=wrap, row=0, column=0, sticky="we")
+        else:
+            sticky = "we" if expand else "w"
+            widget.grid(row=row, column=1, sticky=sticky, pady=6)
+
+        if action_widget is not None:
+            action_widget.grid(row=row, column=2, sticky="e",
+                               padx=(10, 0), pady=6)
+
+        if hint:
+            row += 1
+            ttk.Label(form, text=hint, foreground="#b0b0b0").grid(
+                row=row, column=1, sticky="w", pady=(0, 8)
+            )
+        return row + 1
+
+    def _render_section(self):
+        self._clear_right()
+        sec = self.v_section.get()
+
+        if sec == "General":
+            self._build_general()
+        elif sec == "Parte 001 – Tornillo":
+            self._build_tornillo()
+        elif sec == "Parte 002 – Camisa":
+            self._build_camisa()
+        elif sec == "Parte 003 – Conducción":
+            self._build_conduccion()
+        elif sec == "Parte 004 – Conducido":
+            self._build_conducido()
+        else:
+            ttk.Label(self.right, text=sec).pack(anchor="w")
+
+        self.right.update_idletasks()
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    # ------------------ Stub Actions ------------------
+
+    def _stub_offer(self, what: str):
+        messagebox.showinfo(
+            "Oferta (pendiente)",
+            f"Botón preparado para futuro:\n\n{what}\n\n(En el futuro: preparar borrador Outlook.)",
+        )
+
+    # ------------------ Helpers automáticos ------------------
+
+    def _ceil_to_5(self, x: float) -> int:
+        return int(math.ceil(x / 5.0) * 5)
+
+    def _auto_from_tubo(self):
+        """
+        - Calcula ID del tubo y propone mangones = (ID + 10) redondeado a 5 por arriba.
+        - Tornillería automática: M12 x (ID + 25) redondeada a 5 por arriba.
+        """
+        try:
+            id_calc = tubo_id_mm(self.v_eje_od.get(), self.v_eje_thk.get())
+            id_mm = float(id_calc) if id_calc is not None and str(
+                id_calc).strip() else None
+        except Exception:
+            id_mm = None
+
+        if id_mm is None:
+            return
+
+        mangon = self._ceil_to_5(id_mm + 10.0)
+
+        # Solo autocompleta si vacío (no pisa lo que escriba el usuario)
+        if not self.v_mangon_conduccion.get().strip():
+            self.v_mangon_conduccion.set(str(mangon))
+        if not self.v_mangon_conducido.get().strip():
+            self.v_mangon_conducido.set(str(mangon))
+
+        bolt_len = self._ceil_to_5(id_mm + 25.0)
+        self.v_metrica_tornillos.set(f"M12x{bolt_len}")
+
+    # ------------------ Section Builders ------------------
+
+    def _build_general(self):
+        form = self._make_form("GENERAL")
+
+        # Material (estrecho)
+        cb_mat = ttk.Combobox(
+            form,
+            textvariable=self.v_material,
+            values=self.catalogs.get("materials", []),
+            state="readonly",
+            width=18,
+            style="Normal.TCombobox",
+        )
+        row = 0
+        row = self._add_row(form, row, "Material", cb_mat, expand=False)
+
+        # Forma camisa
+        row = self._add_row(form, row, "Forma de la camisa", ttk.Frame(form))
+        for w in form.grid_slaves(row=row - 1, column=1):
+            w.destroy()
+        f_cam = ttk.Frame(form)
+        f_cam.grid(row=row - 1, column=1, sticky="w", pady=6)
+
+        ttk.Radiobutton(
+            f_cam,
+            text="Artesa",
+            value="ARTESA",
+            variable=self.v_camisa_tipo,
+            command=self._on_camisa_changed,
+        ).pack(side="left", padx=(0, 14))
+        ttk.Radiobutton(
+            f_cam,
+            text="Tubo circular",
+            value="CIRCULAR",
+            variable=self.v_camisa_tipo,
+            command=self._on_camisa_changed,
+        ).pack(side="left")
+
+        # Sentido de giro
+        row = self._add_row(form, row, "Sentido de giro", ttk.Frame(form))
+        for w in form.grid_slaves(row=row - 1, column=1):
+            w.destroy()
+        f_giro = ttk.Frame(form)
+        f_giro.grid(row=row - 1, column=1, sticky="w", pady=6)
+        ttk.Radiobutton(f_giro, text="A derechas", value="DERECHAS", variable=self.v_sentido).pack(
+            side="left", padx=(0, 14)
+        )
+        ttk.Radiobutton(
+            f_giro, text="A izquierdas", value="IZQUIERDAS", variable=self.v_sentido
+        ).pack(side="left")
+
+        # Longitud entre testeros (LISTA de Distancio_Testeros.csv -> catalogs["distancia_testeros"])
+        cb_len = ttk.Combobox(
+            form,
+            textvariable=self.v_long_test,
+            values=self.catalogs.get("distancia_testeros", []),
+            state="readonly",
+            width=18,
+            style="Normal.TCombobox",
+        )
+        self.cb_long_test = cb_len
+        row = self._add_row(
+            form, row, "Longitud entre testeros (mm)", cb_len, expand=False)
+
+        # Pendiente medir en cliente (checkbox)
+        chk = ttk.Checkbutton(
+            form,
+            text="Pendiente de medir en el Cliente",
+            variable=self.v_pendiente_medir,
+            command=self._apply_pending_style,
+        )
+        ttk.Label(form, text="").grid(row=row, column=0,
+                                      sticky="w", padx=(0, 14), pady=6)
+        chk.grid(row=row, column=1, sticky="w", pady=6)
+        row += 1
+
+        # Longitud total exterior (calculada) - estrecha + rojo si faltan datos
+        ent_total = tk.Entry(
+            form,
+            textvariable=self.v_long_total_ext,
+            bg="#ffffff",
+            fg="#000000",
+            insertbackground="#000000",
+            relief="flat",
+            width=18,
+        )
+        ent_total.config(state="readonly")
+        self.ent_long_total_ext = ent_total
+        row = self._add_row(
+            form,
+            row,
+            "Longitud total exterior del sinfín (mm) [calc]",
+            ent_total,
+            expand=False,
+        )
+
+        # Hint dinámico (si falta algo para calcular)
+        lbl_hint = ttk.Label(
+            form, textvariable=self.v_long_total_hint, foreground="#ff3b30")
+        lbl_hint.grid(row=row, column=1, sticky="w", pady=(0, 8))
+        row += 1
+
+        # Observaciones (Text) - cuadro editable
+        txt = tk.Text(form, height=4)
+        self._obs_text = txt
+        pending = getattr(self, "_pending_obs", "")
+        if pending:
+            self._set_observaciones(pending)
+        row = self._add_row(form, row, "Observaciones", txt, height=6)
+
+        # aplicar estilos iniciales
+        self._recalc_longitudes()
+        self._apply_pending_style()
+
+    def _build_tornillo(self):
+        form = self._make_form("PARTE 001 – TORNILLO", cols=3)
+        row = 0
+
+        def offer_btn(text: str):
+            return ttk.Button(
+                form,
+                text="Pedir Ofertas Material",
+                command=lambda: self._stub_offer(text),
+            )
+
+        # 1) Eje OD (con botón oferta)
+        cb_od = ttk.Combobox(
+            form,
+            textvariable=self.v_eje_od,
+            values=self.catalogs.get("eje_od", []),
+            state="readonly",
+        )
+        cb_od.bind("<<ComboboxSelected>>",
+                   lambda _e: self._on_eje_od_changed())
+        row = self._add_row(
+            form,
+            row,
+            "Eje: ø exterior tubo:",
+            cb_od,
+            action_widget=offer_btn("Eje: Ø exterior tubo"),
+        )
+
+        # 2) Espesor eje (filtrado por OD) (SIN botón oferta)
+        cb_thk = ttk.Combobox(
+            form, textvariable=self.v_eje_thk, values=[], state="readonly")
+        cb_thk.bind("<<ComboboxSelected>>",
+                    lambda _e: self._on_eje_thk_changed())
+        row = self._add_row(form, row, "Espesor tubo eje (mm)", cb_thk)
+        self.cb_eje_thk = cb_thk
+
+        # Mangones extremos Ø (automático si vacío)
+        ent_mc = ttk.Entry(
+            form, textvariable=self.v_mangon_conduccion, width=18)
+        row = self._add_row(
+            form,
+            row,
+            "Mangón conducción Ø macizo (mm) [auto]",
+            ent_mc,
+            expand=False,
+        )
+
+        ent_md = ttk.Entry(
+            form, textvariable=self.v_mangon_conducido, width=18)
+        row = self._add_row(
+            form,
+            row,
+            "Mangón conducido Ø macizo (mm) [auto]",
+            ent_md,
+            expand=False,
+        )
+
+        # Longitudes exteriores mangones (para longitud total exterior)
+        ent_lc = ttk.Entry(
+            form, textvariable=self.v_mangon_ext_conduccion, width=18)
+        row = self._add_row(
+            form,
+            row,
+            "Longitud exterior mangón conducción (mm)",
+            ent_lc,
+            expand=False,
+        )
+
+        ent_ld = ttk.Entry(
+            form, textvariable=self.v_mangon_ext_conducido, width=18)
+        row = self._add_row(
+            form,
+            row,
+            "Longitud exterior mangón conducido (mm)",
+            ent_ld,
+            expand=False,
+        )
+
+        # ¿Mangones intermedios?
+        chk = ttk.Checkbutton(
+            form,
+            text="¿Mangón/es Intermedio/s?",
+            variable=self.v_mangones_intermedios,
+            command=self._render_section,  # re-render para mostrar/ocultar campos
+        )
+        ttk.Label(form, text="").grid(row=row, column=0,
+                                      sticky="w", padx=(0, 14), pady=6)
+        chk.grid(row=row, column=1, sticky="w", pady=6)
+        row += 1
+
+        if self.v_mangones_intermedios.get():
+            ent_n = ttk.Entry(
+                form, textvariable=self.v_num_mangones_intermedios, width=18)
+            row = self._add_row(
+                form,
+                row,
+                "Número de Mangones Intermedios",
+                ent_n,
+                expand=False,
+            )
+
+            ent_d = ttk.Entry(
+                form, textvariable=self.v_diam_mangon_intermedio, width=18)
+            row = self._add_row(
+                form,
+                row,
+                "Diámetro del mismo (mm) [libre]",
+                ent_d,
+                action_widget=offer_btn("Mangones intermedios (material)"),
+                expand=False,
+            )
+
+        # Separador antes de tornillería (para diferenciar)
+        sep = ttk.Separator(form, orient="horizontal")
+        sep.grid(row=row, column=0, columnspan=3, sticky="we", pady=(10, 10))
+        row += 1
+
+        # Tornillería automática (readonly entry) (sin botón)
+        ent_torn = tk.Entry(
+            form,
+            textvariable=self.v_metrica_tornillos,
+            bg="#ffffff",
+            fg="#000000",
+            insertbackground="#000000",
+            relief="flat",
+            width=18,
+        )
+        ent_torn.config(state="readonly")
+        row = self._add_row(
+            form, row, "Tornillería (automática)", ent_torn, expand=False)
+
+        # Ø exterior espira (sin botón)
+        cb_de = ttk.Combobox(
+            form,
+            textvariable=self.v_diam_espira,
+            values=self.catalogs.get("diam_espira", []),
+            state="readonly",
+        )
+        row = self._add_row(form, row, "DIAMETRO EXTERIOR ESPIRA (mm)", cb_de)
+
+        # Espesor espira (CON botón único central)
+        cb_es = ttk.Combobox(
+            form,
+            textvariable=self.v_espesor_espira,
+            values=self.catalogs.get("espesores_chapa", []),
+            state="readonly",
+        )
+        row = self._add_row(
+            form,
+            row,
+            "ESPESOR ESPIRAS (mm)",
+            cb_es,
+            action_widget=offer_btn("Espiras: espesor"),
+        )
+
+        # Pasos (sin botones)
+        cb_p1 = ttk.Combobox(form, textvariable=self.v_paso1, values=self.catalogs.get(
+            "pasos", []), state="readonly")
+        row = self._add_row(form, row, "PASO ESPIRAS – Paso 1 (mm)", cb_p1)
+
+        cb_p2 = ttk.Combobox(form, textvariable=self.v_paso2, values=self.catalogs.get(
+            "pasos", []), state="readonly")
+        row = self._add_row(
+            form, row, "PASO ESPIRAS – Paso 2 (mm) [opcional]", cb_p2)
+
+        cb_p3 = ttk.Combobox(form, textvariable=self.v_paso3, values=self.catalogs.get(
+            "pasos", []), state="readonly")
+        row = self._add_row(
+            form, row, "PASO ESPIRAS – Paso 3 (mm) [opcional]", cb_p3)
+
+        self._on_eje_od_changed()
+        self._recalc_longitudes()
+
+    def _build_camisa(self):
+        tipo = self.v_camisa_tipo.get()  # CIRCULAR / ARTESA
+        yesno = ["", "Sí", "No"]
+
+        def offer_btn(text: str):
+            return ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(text))
+
+        if tipo == "CIRCULAR":
+            form = self._make_form("PARTE 002A – CAMISA TUBO Ø", cols=3)
+            row = 0
+
+            cb_dist = ttk.Combobox(
+                form,
+                textvariable=self.v_dist_testeros,
+                values=self.catalogs.get("distancia_testeros", []),
+                state="readonly",
+            )
+            row = self._add_row(
+                form,
+                row,
+                "Distancia entre testeros (mm)",
+                cb_dist,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002A: Distancia entre testeros")),
+            )
+
+            ent_tubo = ttk.Entry(form, textvariable=self.v_002A_tubo)
+            row = self._add_row(
+                form,
+                row,
+                "002A.001  Tubo ø exterior / ø interior",
+                ent_tubo,
+                action_widget=ttk.Button(
+                    form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002A: Tubo")),
+            )
+
+            cb_testeros = ttk.Combobox(
+                form,
+                textvariable=self.v_002A_testeros,
+                values=self.catalogs.get("espesores_chapa", []),
+                state="readonly",
+            )
+            row = self._add_row(
+                form,
+                row,
+                "002A.002  Testeros (espesor)",
+                cb_testeros,
+                action_widget=ttk.Button(
+                    form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002A: Testeros")),
+            )
+
+            cb_win = ttk.Combobox(
+                form, textvariable=self.v_002A_ventana_inspeccion, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002A.003  Ventana inspección",
+                cb_win,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002A: Ventana inspección")),
+            )
+
+            cb_suj = ttk.Combobox(
+                form, textvariable=self.v_002A_suj_mangon_intermedio, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002A.004  Cjto. sujeción mangón intermedio",
+                cb_suj,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002A: Sujeción mangón intermedio")),
+            )
+
+            cb_in = ttk.Combobox(
+                form, textvariable=self.v_002A_boca_entrada, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002A.005  Boca entrada",
+                cb_in,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002A: Boca entrada")),
+            )
+
+            cb_out = ttk.Combobox(
+                form, textvariable=self.v_002A_boca_salida, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002A.006  Boca salida",
+                cb_out,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002A: Boca salida")),
+            )
 
         else:
-            tk.Label(
-                self.camisa_container,
-                text="PARTE 002B: CAMISA ARTESA",
-                fg="white",
-                bg="#1e1e1e",
-                font=("Segoe UI", 11, "bold"),
-            ).pack(anchor="w", pady=(0, 10))
+            form = self._make_form("PARTE 002B – CAMISA ARTESA", cols=3)
+            row = 0
 
-            self._row(self.camisa_container, "Distancia entre testeros", ttk.Entry(
-                self.camisa_container, textvariable=self.v_long_test))
-            self._row(self.camisa_container, "Chapa artesa", ttk.Entry(
-                self.camisa_container, textvariable=self.v_artesa_chapa))
-            self._row(self.camisa_container, "Testeros (espesor)", ttk.Entry(
-                self.camisa_container, textvariable=self.v_artesa_testeros_thk))
-            self._row(self.camisa_container, "Ventana inspección", ttk.Entry(
-                self.camisa_container, textvariable=self.v_artesa_ventana))
-            self._row(self.camisa_container, "Chapa sujeción mangón intermedio", ttk.Entry(
-                self.camisa_container, textvariable=self.v_artesa_suj_mangon))
-            self._row(self.camisa_container, "Boca entrada", ttk.Entry(
-                self.camisa_container, textvariable=self.v_artesa_boca_entrada))
-            self._row(self.camisa_container, "Boca salida", ttk.Entry(
-                self.camisa_container, textvariable=self.v_artesa_boca_salida))
+            cb_dist = ttk.Combobox(
+                form,
+                textvariable=self.v_dist_testeros,
+                values=self.catalogs.get("distancia_testeros", []),
+                state="readonly",
+            )
+            row = self._add_row(
+                form,
+                row,
+                "Distancia entre testeros (mm)",
+                cb_dist,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002B: Distancia entre testeros")),
+            )
 
-    def _build_def_conduccion(self, parent):
-        self._section_title(parent, "PARTE 003 – CONDUCCIÓN")
+            cb_chapa = ttk.Combobox(
+                form,
+                textvariable=self.v_002B_chapa_artesa,
+                values=self.catalogs.get("espesores_chapa", []),
+                state="readonly",
+            )
+            row = self._add_row(
+                form,
+                row,
+                "002B.001  Chapa artesa (espesor)",
+                cb_chapa,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002B: Chapa artesa")),
+            )
 
-        refs = rodamientos_refs(self.catalogs)
-        self.cb_rod = ttk.Combobox(
-            parent, textvariable=self.v_rodamiento_ref, values=refs, state="readonly")
-        self._row(parent, "Rodamiento (referencia)", self.cb_rod)
+            cb_testeros = ttk.Combobox(
+                form,
+                textvariable=self.v_002B_testeros,
+                values=self.catalogs.get("espesores_chapa", []),
+                state="readonly",
+            )
+            row = self._add_row(
+                form,
+                row,
+                "002B.002  Testeros (espesor)",
+                cb_testeros,
+                action_widget=ttk.Button(
+                    form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002B: Testeros")),
+            )
 
-        pos = self.catalogs.get("posicion_motor", [])
-        self.cb_pos = ttk.Combobox(
-            parent, textvariable=self.v_pos_motor, values=pos, state="readonly")
-        self._row(parent, "Posición motorreductor-eje", self.cb_pos)
+            cb_win = ttk.Combobox(
+                form, textvariable=self.v_002B_ventana_inspeccion, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002B.003  Ventana inspección",
+                cb_win,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002B: Ventana inspección")),
+            )
 
-    def _build_def_conducido(self, parent):
-        self._section_title(parent, "PARTE 004 – CONDUCIDO")
+            cb_suj = ttk.Combobox(
+                form, textvariable=self.v_002B_suj_mangon_intermedio, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002B.004  Chapa sujeción mangón intermedio",
+                cb_suj,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002B: Sujeción mangón intermedio")),
+            )
 
-        self._row(parent, "004.001 Brida", ttk.Entry(
-            parent, textvariable=self.v_conducido_brida))
-        self._row(parent, "004.002 Prensaestopas", ttk.Entry(
-            parent, textvariable=self.v_conducido_prensaestopas))
-        self._row(parent, "004.003 Bancada soporte", ttk.Entry(
-            parent, textvariable=self.v_conducido_bancada))
-        self._row(parent, "004.004 Cjto Rodamiento", ttk.Entry(
-            parent, textvariable=self.v_conducido_cjto_rodamiento))
-        self._row(parent, "004.005 Sellado", ttk.Entry(
-            parent, textvariable=self.v_conducido_sellado))
+            cb_in = ttk.Combobox(
+                form, textvariable=self.v_002B_boca_entrada, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002B.005  Boca entrada",
+                cb_in,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002B: Boca entrada")),
+            )
 
-    def _show_section(self):
-        key = self.section.get()
-        for k, f in self.frames.items():
-            f.lift() if k == key else None
-        self.frames[key].lift()
+            cb_out = ttk.Combobox(
+                form, textvariable=self.v_002B_boca_salida, values=yesno, state="readonly")
+            row = self._add_row(
+                form,
+                row,
+                "002B.006  Boca salida",
+                cb_out,
+                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                    "Camisa 002B: Boca salida")),
+            )
+
+    def _build_conduccion(self):
+        form = self._make_form("PARTE 003 – CONDUCCIÓN")
+        row = 0
+
+        # Disposición del motor (movida desde GENERAL)
+        cb_tipo = ttk.Combobox(
+            form,
+            textvariable=self.v_tipo_dispos,
+            values=self.catalogs.get("tipo_disposicion", []),
+            state="readonly",
+        )
+        row = self._add_row(form, row, "Disposición del motor (tipo)", cb_tipo)
+
+        self.cb_rod_conduccion = ttk.Combobox(
+            form, textvariable=self.v_rod_conduccion, values=[], state="readonly"
+        )
+        row = self._add_row(
+            form, row, "Rodamiento (referencia)", self.cb_rod_conduccion)
+
+        cb_pos = ttk.Combobox(
+            form,
+            textvariable=self.v_pos_motor,
+            values=self.catalogs.get("posicion_motor", []),
+            state="readonly",
+        )
+        row = self._add_row(form, row, "Posición motorreductor-eje", cb_pos)
+
+        self._refresh_rodamientos()
+
+    def _build_conducido(self):
+        form = self._make_form("PARTE 004 – CONDUCIDO")
+        row = 0
+
+        self.cb_rod_conducido = ttk.Combobox(
+            form, textvariable=self.v_rod_conducido, values=[], state="readonly"
+        )
+        row = self._add_row(
+            form, row, "Rodamiento (referencia)", self.cb_rod_conducido)
+
+        self._refresh_rodamientos()
+
+    # ------------------ Events / Refresh ------------------
 
     def _on_camisa_changed(self):
-        self._render_camisa_panel()
+        if self.v_section.get() == "Parte 002 – Camisa":
+            self._render_section()
 
-    def _refresh_espesores(self):
+    def _on_eje_od_changed(self):
         od = self.v_eje_od.get().strip()
-        espes = espesores_for_od(self.catalogs, od)
-        self.cb_thk["values"] = espes
-        if espes:
-            if self.v_eje_thk.get().strip() not in espes:
-                self.v_eje_thk.set(espes[0])
+        espes = filter_espesores_por_od(self.catalogs, od)
+        self.cb_eje_thk.configure(values=espes)
+
+        if self.v_eje_thk.get().strip() not in espes:
+            self.v_eje_thk.set(espes[0] if espes else "")
+
+        self._refresh_rodamientos()
+        self._auto_from_tubo()
+
+    def _on_eje_thk_changed(self):
+        self._refresh_rodamientos()
+        self._auto_from_tubo()
+
+    def _refresh_rodamientos(self):
+        vals = filter_rodamientos_por_tubo(
+            self.catalogs, self.v_eje_od.get(), self.v_eje_thk.get())
+        if hasattr(self, "cb_rod_conduccion"):
+            self.cb_rod_conduccion.configure(values=vals)
+            if self.v_rod_conduccion.get() and self.v_rod_conduccion.get() not in vals:
+                self.v_rod_conduccion.set("")
+        if hasattr(self, "cb_rod_conducido"):
+            self.cb_rod_conducido.configure(values=vals)
+            if self.v_rod_conducido.get() and self.v_rod_conducido.get() not in vals:
+                self.v_rod_conducido.set("")
+
+    def _apply_pending_style(self):
+        """
+        Si está pendiente de medir, intentamos marcar la Longitud entre testeros en rojo.
+        (En algunos temas de Windows el foreground del Combobox no cambia; en ese caso al menos
+        queda indicado por la casilla y por el hint/calculo.)
+        """
+        if self.cb_long_test:
+            self.cb_long_test.configure(
+                style="Pending.TCombobox" if self.v_pendiente_medir.get() else "Normal.TCombobox")
+
+    def _recalc_longitudes(self):
+        """
+        Longitud total exterior = longitud entre testeros + longitudes exteriores de mangón (conducción + conducido).
+        Si falta algún valor -> el total queda en rojo y mostramos texto indicando qué falta.
+        """
+        lt = _to_float(self.v_long_test.get())
+        lc = _to_float(self.v_mangon_ext_conduccion.get())
+        ld = _to_float(self.v_mangon_ext_conducido.get())
+
+        missing = []
+        if lt is None:
+            missing.append("Longitud entre testeros")
+        if lc is None:
+            missing.append("Longitud exterior mangón conducción")
+        if ld is None:
+            missing.append("Longitud exterior mangón conducido")
+
+        if missing:
+            self.v_long_total_ext.set("")
+            self.v_long_total_hint.set(
+                "Falta para calcular: " + " · ".join(missing))
+            if self.ent_long_total_ext:
+                self.ent_long_total_ext.config(state="normal")
+                self.ent_long_total_ext.config(fg="#ff3b30")  # rojo
+                self.ent_long_total_ext.config(state="readonly")
         else:
-            self.v_eje_thk.set("")
+            total = float(lt) + float(lc) + float(ld)
+            self.v_long_total_ext.set(f"{total:.0f}")
+            self.v_long_total_hint.set("")
+            if self.ent_long_total_ext:
+                self.ent_long_total_ext.config(state="normal")
+                self.ent_long_total_ext.config(fg="#000000")
+                self.ent_long_total_ext.config(state="readonly")
 
-        # Refresca rodamientos filtrados por eje
-        refs = filter_rodamientos_por_eje(
-            self.catalogs.get("rodamientos", []), od)
-        self.cb_rod["values"] = refs
+    # ------------------ Progress Tab (Treeview con Estado) ------------------
 
-    # ---------------- LOAD/SAVE ----------------
-    def load_all(self):
-        self.load_definition()
-        self.load_progress()
+    def _build_progress_tab(self):
+        top = ttk.Frame(self.tab_prog)
+        top.pack(fill="x", padx=16, pady=12)
 
-    def load_definition(self):
+        ttk.Label(top, text="Progreso sinfín:", font=(
+            "Segoe UI", 12, "bold")).pack(side="left")
+        self.lbl_pct = ttk.Label(top, text="", font=(
+            "Segoe UI", 12, "bold"), foreground="#00bcd4")
+        self.lbl_pct.pack(side="left", padx=10)
+
+        btns = ttk.Frame(top)
+        btns.pack(side="right")
+        ttk.Button(btns, text="Recargar", command=self._load_progress).pack(
+            side="left", padx=(0, 8))
+        ttk.Button(btns, text="Marcar HECHO", command=lambda: self._set_selected_task_state(
+            1)).pack(side="left", padx=(0, 8))
+        ttk.Button(btns, text="Marcar PENDIENTE",
+                   command=lambda: self._set_selected_task_state(0)).pack(side="left")
+
+        cols = ("Proceso", "Tarea", "Estado")
+        self.tree_prog = ttk.Treeview(
+            self.tab_prog, columns=cols, show="headings", height=22)
+        for c in cols:
+            self.tree_prog.heading(c, text=c)
+            self.tree_prog.column(c, width=220 if c !=
+                                  "Tarea" else 600, anchor="w")
+
+        self.tree_prog.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        self.tree_prog.bind(
+            "<Double-1>", lambda _e: self._toggle_selected_task())
+
+        ttk.Label(
+            self.tab_prog,
+            text="Doble click para alternar HECHO/PENDIENTE. Se guarda en la base de datos.",
+            foreground="#b0b0b0",
+        ).pack(anchor="w", padx=16, pady=(0, 12))
+
+        self._tree_item_to_tarea_id = {}
+
+    def _toggle_selected_task(self):
+        sel = self.tree_prog.selection()
+        if not sel:
+            return
+        item = sel[0]
+        tarea_id = self._tree_item_to_tarea_id.get(item)
+        if not tarea_id:
+            return
+
         con = connect()
-        d = get_sinfin_definicion(con, self.sinfin_id)
-        con.close()
+        try:
+            cur = get_estado_tarea(con, self.sinfin_id, int(tarea_id))
+            newv = 0 if int(cur) == 1 else 1
+            set_estado_tarea(con, self.sinfin_id, int(tarea_id), newv)
+        finally:
+            con.close()
 
+        self._load_progress()
+
+    def _set_selected_task_state(self, completado: int):
+        sel = self.tree_prog.selection()
+        if not sel:
+            return
+        item = sel[0]
+        tarea_id = self._tree_item_to_tarea_id.get(item)
+        if not tarea_id:
+            return
+
+        con = connect()
+        try:
+            set_estado_tarea(con, self.sinfin_id,
+                             int(tarea_id), int(completado))
+        finally:
+            con.close()
+
+        self._load_progress()
+
+    # ------------------ Load / Save ------------------
+
+    def _load_all(self):
+        self._load_definition()
+        self._load_progress()
+
+    def _get_observaciones(self) -> str:
+        if not self._obs_text:
+            return ""
+        return self._obs_text.get("1.0", "end").strip()
+
+    def _set_observaciones(self, text: str):
+        if not self._obs_text:
+            return
+        self._obs_text.delete("1.0", "end")
+        if text:
+            self._obs_text.insert("1.0", text)
+
+    def _load_definition(self):
+        con = connect()
+        try:
+            d = get_sinfin_definicion(con, self.sinfin_id) or {}
+        finally:
+            con.close()
+
+        if isinstance(d, str):
+            try:
+                d = json.loads(d)
+            except Exception:
+                d = {}
+
+        # GENERAL
         self.v_material.set(d.get("material", self.v_material.get()))
         self.v_camisa_tipo.set(d.get("camisa_tipo", self.v_camisa_tipo.get()))
         self.v_sentido.set(d.get("sentido_giro", self.v_sentido.get()))
-        self.v_long_test.set(
-            d.get("long_entre_testeros", self.v_long_test.get()))
-        self.v_tipo_disposicion.set(
-            d.get("tipo_disposicion", self.v_tipo_disposicion.get()))
-        self.v_observaciones.set(
-            d.get("observaciones", self.v_observaciones.get()))
+        self.v_long_test.set(_safe_float_text(
+            d.get("longitud_entre_testeros", d.get("long_test", ""))))
+        self.v_pendiente_medir.set(
+            bool(d.get("pendiente_medir_cliente", False)))
+        self._pending_obs = d.get("observaciones", "")
 
+        # Disposición motor (Parte 003)
+        self.v_tipo_dispos.set(
+            d.get("tipo_disposicion", self.v_tipo_dispos.get()))
+
+        # TORNILLO
         self.v_eje_od.set(d.get("eje_od", self.v_eje_od.get()))
         self.v_eje_thk.set(d.get("eje_thk", self.v_eje_thk.get()))
-        self.v_diam_ext_espira.set(
-            d.get("diam_ext_espira", self.v_diam_ext_espira.get()))
+
+        self.v_mangon_conduccion.set(
+            d.get("mangon_conduccion", self.v_mangon_conduccion.get()))
+        self.v_mangon_conducido.set(
+            d.get("mangon_conducido", self.v_mangon_conducido.get()))
+
+        self.v_mangon_ext_conduccion.set(
+            d.get("mangon_ext_conduccion", self.v_mangon_ext_conduccion.get()))
+        self.v_mangon_ext_conducido.set(
+            d.get("mangon_ext_conducido", self.v_mangon_ext_conducido.get()))
+
+        self.v_mangones_intermedios.set(
+            bool(d.get("mangones_intermedios", False)))
+        self.v_num_mangones_intermedios.set(
+            d.get("num_mangones_intermedios", ""))
+        self.v_diam_mangon_intermedio.set(d.get("diam_mangon_intermedio", ""))
+
+        self.v_metrica_tornillos.set(
+            d.get("metrica_tornillos", self.v_metrica_tornillos.get()))
+
+        self.v_diam_espira.set(d.get("diam_espira", self.v_diam_espira.get()))
         self.v_espesor_espira.set(
             d.get("espesor_espira", self.v_espesor_espira.get()))
-        self.v_paso_1.set(d.get("paso_1", self.v_paso_1.get()))
-        self.v_paso_2.set(d.get("paso_2", self.v_paso_2.get()))
-        self.v_paso_3.set(d.get("paso_3", self.v_paso_3.get()))
-        self.v_tornillos_metrica.set(
-            d.get("tornillos_metrica", self.v_tornillos_metrica.get()))
-        self.v_tornillos_num.set(
-            d.get("tornillos_num", self.v_tornillos_num.get()))
-        self.v_mangon_conduccion_d.set(
-            d.get("mangon_conduccion_d", self.v_mangon_conduccion_d.get()))
-        self.v_mangon_conducido_d.set(
-            d.get("mangon_conducido_d", self.v_mangon_conducido_d.get()))
-        self.v_num_tramos.set(d.get("num_tramos", self.v_num_tramos.get()))
-        self.v_num_mangones_intermedios.set(
-            d.get("num_mangones_intermedios", self.v_num_mangones_intermedios.get()))
-        self.v_sujecion_mangon_intermedio.set(
-            d.get("sujecion_mangon_intermedio", self.v_sujecion_mangon_intermedio.get()))
+        self.v_paso1.set(d.get("paso1", self.v_paso1.get()))
+        self.v_paso2.set(d.get("paso2", self.v_paso2.get()))
+        self.v_paso3.set(d.get("paso3", self.v_paso3.get()))
 
-        self.v_camisa_tubo_od.set(
-            d.get("camisa_tubo_od", self.v_camisa_tubo_od.get()))
-        self.v_camisa_tubo_id.set(
-            d.get("camisa_tubo_id", self.v_camisa_tubo_id.get()))
-        self.v_camisa_testeros_thk.set(
-            d.get("camisa_testeros_thk", self.v_camisa_testeros_thk.get()))
-        self.v_camisa_ventana.set(
-            d.get("camisa_ventana", self.v_camisa_ventana.get()))
-        self.v_camisa_suj_mangon.set(
-            d.get("camisa_suj_mangon", self.v_camisa_suj_mangon.get()))
-        self.v_camisa_boca_entrada.set(
-            d.get("camisa_boca_entrada", self.v_camisa_boca_entrada.get()))
-        self.v_camisa_boca_salida.set(
-            d.get("camisa_boca_salida", self.v_camisa_boca_salida.get()))
+        # CAMISA
+        self.v_dist_testeros.set(
+            d.get("distancia_testeros", self.v_dist_testeros.get()))
 
-        self.v_artesa_chapa.set(
-            d.get("artesa_chapa", self.v_artesa_chapa.get()))
-        self.v_artesa_testeros_thk.set(
-            d.get("artesa_testeros_thk", self.v_artesa_testeros_thk.get()))
-        self.v_artesa_ventana.set(
-            d.get("artesa_ventana", self.v_artesa_ventana.get()))
-        self.v_artesa_suj_mangon.set(
-            d.get("artesa_suj_mangon", self.v_artesa_suj_mangon.get()))
-        self.v_artesa_boca_entrada.set(
-            d.get("artesa_boca_entrada", self.v_artesa_boca_entrada.get()))
-        self.v_artesa_boca_salida.set(
-            d.get("artesa_boca_salida", self.v_artesa_boca_salida.get()))
+        self.v_002A_tubo.set(d.get("002A_tubo", ""))
+        self.v_002A_testeros.set(d.get("002A_testeros", ""))
+        self.v_002A_ventana_inspeccion.set(
+            d.get("002A_ventana_inspeccion", ""))
+        self.v_002A_suj_mangon_intermedio.set(
+            d.get("002A_suj_mangon_intermedio", ""))
+        self.v_002A_boca_entrada.set(d.get("002A_boca_entrada", ""))
+        self.v_002A_boca_salida.set(d.get("002A_boca_salida", ""))
 
-        self.v_rodamiento_ref.set(
-            d.get("rodamiento_ref", self.v_rodamiento_ref.get()))
-        self.v_pos_motor.set(d.get("pos_motor", self.v_pos_motor.get()))
+        self.v_002B_chapa_artesa.set(d.get("002B_chapa_artesa", ""))
+        self.v_002B_testeros.set(d.get("002B_testeros", ""))
+        self.v_002B_ventana_inspeccion.set(
+            d.get("002B_ventana_inspeccion", ""))
+        self.v_002B_suj_mangon_intermedio.set(
+            d.get("002B_suj_mangon_intermedio", ""))
+        self.v_002B_boca_entrada.set(d.get("002B_boca_entrada", ""))
+        self.v_002B_boca_salida.set(d.get("002B_boca_salida", ""))
 
-        # refrescos dependientes
-        self._render_camisa_panel()
-        self._refresh_espesores()
+        # CONDUCCIÓN / CONDUCIDO
+        self.v_rod_conduccion.set(d.get("rodamiento_conduccion", d.get(
+            "rodamiento", self.v_rod_conduccion.get())))
+        self.v_pos_motor.set(d.get("posicion_motor", self.v_pos_motor.get()))
+        self.v_rod_conducido.set(
+            d.get("rodamiento_conducido", self.v_rod_conducido.get()))
 
-    def save_definition(self):
-        defin = {
+        self._on_eje_od_changed()
+        self._auto_from_tubo()
+        self._recalc_longitudes()
+        self._apply_pending_style()
+        self._render_section()
+
+    def _save_definition(self):
+        data = {
+            # GENERAL
             "material": self.v_material.get().strip(),
             "camisa_tipo": self.v_camisa_tipo.get().strip(),
             "sentido_giro": self.v_sentido.get().strip(),
-            "long_entre_testeros": self.v_long_test.get().strip(),
-            "tipo_disposicion": self.v_tipo_disposicion.get().strip(),
-            "observaciones": self.v_observaciones.get().strip(),
+            "longitud_entre_testeros": self.v_long_test.get().strip(),
+            "pendiente_medir_cliente": bool(self.v_pendiente_medir.get()),
+            "observaciones": self._get_observaciones(),
 
+            # Disposición motor (Parte 003)
+            "tipo_disposicion": self.v_tipo_dispos.get().strip(),
+
+            # TORNILLO
             "eje_od": self.v_eje_od.get().strip(),
             "eje_thk": self.v_eje_thk.get().strip(),
-            "diam_ext_espira": self.v_diam_ext_espira.get().strip(),
-            "espesor_espira": self.v_espesor_espira.get().strip(),
-            "paso_1": self.v_paso_1.get().strip(),
-            "paso_2": self.v_paso_2.get().strip(),
-            "paso_3": self.v_paso_3.get().strip(),
-            "tornillos_metrica": self.v_tornillos_metrica.get().strip(),
-            "tornillos_num": self.v_tornillos_num.get().strip(),
-            "mangon_conduccion_d": self.v_mangon_conduccion_d.get().strip(),
-            "mangon_conducido_d": self.v_mangon_conducido_d.get().strip(),
-            "num_tramos": self.v_num_tramos.get().strip(),
+            "eje_id_calc": _safe_float_text(tubo_id_mm(self.v_eje_od.get(), self.v_eje_thk.get())),
+
+            "mangon_conduccion": self.v_mangon_conduccion.get().strip(),
+            "mangon_conducido": self.v_mangon_conducido.get().strip(),
+
+            "mangon_ext_conduccion": self.v_mangon_ext_conduccion.get().strip(),
+            "mangon_ext_conducido": self.v_mangon_ext_conducido.get().strip(),
+
+            "mangones_intermedios": bool(self.v_mangones_intermedios.get()),
             "num_mangones_intermedios": self.v_num_mangones_intermedios.get().strip(),
-            "sujecion_mangon_intermedio": self.v_sujecion_mangon_intermedio.get().strip(),
+            "diam_mangon_intermedio": self.v_diam_mangon_intermedio.get().strip(),
 
-            "camisa_tubo_od": self.v_camisa_tubo_od.get().strip(),
-            "camisa_tubo_id": self.v_camisa_tubo_id.get().strip(),
-            "camisa_testeros_thk": self.v_camisa_testeros_thk.get().strip(),
-            "camisa_ventana": self.v_camisa_ventana.get().strip(),
-            "camisa_suj_mangon": self.v_camisa_suj_mangon.get().strip(),
-            "camisa_boca_entrada": self.v_camisa_boca_entrada.get().strip(),
-            "camisa_boca_salida": self.v_camisa_boca_salida.get().strip(),
+            "metrica_tornillos": self.v_metrica_tornillos.get().strip(),
 
-            "artesa_chapa": self.v_artesa_chapa.get().strip(),
-            "artesa_testeros_thk": self.v_artesa_testeros_thk.get().strip(),
-            "artesa_ventana": self.v_artesa_ventana.get().strip(),
-            "artesa_suj_mangon": self.v_artesa_suj_mangon.get().strip(),
-            "artesa_boca_entrada": self.v_artesa_boca_entrada.get().strip(),
-            "artesa_boca_salida": self.v_artesa_boca_salida.get().strip(),
+            "diam_espira": self.v_diam_espira.get().strip(),
+            "espesor_espira": self.v_espesor_espira.get().strip(),
+            "paso1": self.v_paso1.get().strip(),
+            "paso2": self.v_paso2.get().strip(),
+            "paso3": self.v_paso3.get().strip(),
 
-            "rodamiento_ref": self.v_rodamiento_ref.get().strip(),
-            "pos_motor": self.v_pos_motor.get().strip(),
+            # CAMISA
+            "distancia_testeros": self.v_dist_testeros.get().strip(),
 
-            "_num": {
-                "eje_od": _to_number(self.v_eje_od.get()),
-                "eje_thk": _to_number(self.v_eje_thk.get()),
-                "diam_ext_espira": _to_number(self.v_diam_ext_espira.get()),
-                "espesor_espira": _to_number(self.v_espesor_espira.get()),
-                "paso_1": _to_number(self.v_paso_1.get()),
-                "paso_2": _to_number(self.v_paso_2.get()),
-                "paso_3": _to_number(self.v_paso_3.get()),
-                "long_entre_testeros": _to_number(self.v_long_test.get()),
-            },
+            "002A_tubo": self.v_002A_tubo.get().strip(),
+            "002A_testeros": self.v_002A_testeros.get().strip(),
+            "002A_ventana_inspeccion": self.v_002A_ventana_inspeccion.get().strip(),
+            "002A_suj_mangon_intermedio": self.v_002A_suj_mangon_intermedio.get().strip(),
+            "002A_boca_entrada": self.v_002A_boca_entrada.get().strip(),
+            "002A_boca_salida": self.v_002A_boca_salida.get().strip(),
+
+            "002B_chapa_artesa": self.v_002B_chapa_artesa.get().strip(),
+            "002B_testeros": self.v_002B_testeros.get().strip(),
+            "002B_ventana_inspeccion": self.v_002B_ventana_inspeccion.get().strip(),
+            "002B_suj_mangon_intermedio": self.v_002B_suj_mangon_intermedio.get().strip(),
+            "002B_boca_entrada": self.v_002B_boca_entrada.get().strip(),
+            "002B_boca_salida": self.v_002B_boca_salida.get().strip(),
+
+            # CONDUCCIÓN / CONDUCIDO
+            "rodamiento_conduccion": self.v_rod_conduccion.get().strip(),
+            "posicion_motor": self.v_pos_motor.get().strip(),
+            "rodamiento_conducido": self.v_rod_conducido.get().strip(),
         }
 
         con = connect()
-        set_sinfin_definicion(con, self.sinfin_id, defin)
-        con.close()
+        try:
+            set_sinfin_definicion(con, self.sinfin_id, data)
+        finally:
+            con.close()
+
+        messagebox.showinfo("Guardado", "Definición guardada.")
+        if self.on_updated_callback:
+            try:
+                self.on_updated_callback()
+            except Exception:
+                pass
+
+    def _load_progress(self):
+        con = connect()
+        try:
+            procs = list_tareas_por_proceso(con) or []
+
+            self.tree_prog.delete(*self.tree_prog.get_children())
+            self._tree_item_to_tarea_id = {}
+
+            total = 0
+            done = 0
+
+            for p in procs:
+                proc_name = p.get("nombre", "")
+                for t in p.get("tareas", []):
+                    tarea_id = int(t["id"])
+                    tarea_name = str(t["nombre"])
+
+                    est = get_estado_tarea(con, self.sinfin_id, tarea_id)
+                    estado_txt = "HECHO" if int(est) == 1 else "PENDIENTE"
+
+                    iid = self.tree_prog.insert("", "end", values=(
+                        proc_name, tarea_name, estado_txt))
+                    self._tree_item_to_tarea_id[iid] = tarea_id
+
+                    total += 1
+                    if int(est) == 1:
+                        done += 1
+
+            pct = (done / total * 100.0) if total else 0.0
+            self.lbl_pct.configure(text=f"{pct:.1f}%")
+
+        finally:
+            con.close()
 
         if self.on_updated_callback:
-            self.on_updated_callback()
-
-        messagebox.showinfo("Definición", "Definición guardada.")
-
-    # ===== Progreso =====
-    def _build_progress_tab(self):
-        top = tk.Frame(self.tab_prog, bg="#1e1e1e")
-        top.pack(fill="x", padx=16, pady=12)
-
-        tk.Label(
-            top,
-            text="Progreso sinfín:",
-            fg="white",
-            bg="#1e1e1e",
-            font=("Segoe UI", 12, "bold"),
-        ).pack(side="left")
-
-        self.lbl_pct = tk.Label(
-            top,
-            text="",
-            fg="#00bcd4",
-            bg="#1e1e1e",
-            font=("Segoe UI", 12, "bold"),
-        )
-        self.lbl_pct.pack(side="left", padx=10)
-
-        ttk.Button(top, text="💾 Guardar", command=self.save_progress).pack(
-            side="right", padx=6)
-        ttk.Button(top, text="🔄 Recargar", command=self.load_progress).pack(
-            side="right", padx=6)
-
-        # Scrollable checklist
-        container = tk.Frame(self.tab_prog, bg="#1e1e1e")
-        container.pack(fill="both", expand=True, padx=16, pady=10)
-
-        self.canvas = tk.Canvas(container, bg="#1e1e1e", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(
-            container, orient="vertical", command=self.canvas.yview)
-        self.inner = tk.Frame(self.canvas, bg="#1e1e1e")
-
-        self.inner.bind("<Configure>", lambda e: self.canvas.configure(
-            scrollregion=self.canvas.bbox("all")))
-        self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
-        self.canvas.configure(yscrollcommand=scrollbar.set)
-
-        self.canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-    def load_progress(self):
-        for w in self.inner.winfo_children():
-            w.destroy()
-        self.vars_checks.clear()
-
-        con = connect()
-        procs = list_tareas_por_proceso(con)
-
-        row = 0
-        for p in procs:
-            title = tk.Label(
-                self.inner,
-                text=p["nombre"].upper(),
-                fg="white",
-                bg="#1e1e1e",
-                font=("Segoe UI", 11, "bold"),
-            )
-            title.grid(row=row, column=0, sticky="w", pady=(10, 2))
-            row += 1
-
-            for t in p["tareas"]:
-                v = tk.IntVar(value=get_estado_tarea(
-                    con, self.sinfin_id, t["id"]))
-                self.vars_checks[t["id"]] = v
-
-                cb = tk.Checkbutton(
-                    self.inner,
-                    text=t["nombre"],
-                    variable=v,
-                    command=self.save_progress,  # guarda al marcar
-                    bg="#1e1e1e",
-                    fg="#cccccc",
-                    activebackground="#1e1e1e",
-                    activeforeground="#ffffff",
-                    selectcolor="#1e1e1e",
-                    anchor="w",
-                )
-                cb.grid(row=row, column=0, sticky="w", pady=1)
-                row += 1
-
-        pct = sinfin_progress(con, self.sinfin_id)
-        self.lbl_pct.config(text=f"{pct:.1f}%  ({estado_from_pct(pct)})")
-        con.close()
-
-    def save_progress(self):
-        con = connect()
-        for tarea_id, v in self.vars_checks.items():
-            set_estado_tarea(con, self.sinfin_id, tarea_id, v.get())
-
-        pct = sinfin_progress(con, self.sinfin_id)
-        self.lbl_pct.config(text=f"{pct:.1f}%  ({estado_from_pct(pct)})")
-        con.close()
-
-        if self.on_updated_callback:
-            self.on_updated_callback()
+            try:
+                self.on_updated_callback()
+            except Exception:
+                pass

@@ -1,30 +1,29 @@
 # utils/catalogs.py
 """
-Catálogos (listas desplegables) para la definición del sinfín.
+Carga catálogos desde JSON (data/catalogos.json) y helpers de filtrado.
 
-Fuente principal: data/catalogos.json (generado a partir de CSV/Excel).
-Así evitamos depender de openpyxl y de fórmulas/validaciones de Excel.
-
-Estructura esperada del JSON (ejemplo):
+Estructura esperada en catalogos.json (mínimo):
 {
-  "materials": ["S355J2+N", ...],
-  "eje_od": ["60,3", "76,1", ...],
-  "espesores_by_od": {"60,3": ["2", "3"], ...},
-  "diam_espira": ["200", "250", ...],
-  "pasos": ["100", "150", ...],
-  "espesores_chapa": ["3", "4", ...],
-  "tipo_disposicion": ["COAXIAL", ...],
-  "posicion_motor": ["B3", "B6", ...],
-  "giro": ["DERECHAS", "IZQUIERDAS"],
-  "rodamientos": [{"ref":"SKF 22211 E","d":55,"D":100,"B":25}, ...],
-  "eje_dim": ["40","45","50", ...]
+  "materials": [...],
+  "diam_espira": [...],
+  "pasos": [...],
+  "espesores_chapa": [...],
+  "distancia_testeros": [...],
+  "rodamientos": [ {"ref":"22208","name":"SKF 22208 E","d":40,"D":80,"B":23}, ... ],
+  "rodamiento_names": ["SKF 22208 E", ...]   # opcional, se puede derivar
+  "eje_dim": [...],
+  "eje_od": [[...],
+  "espesores_by_od": { "60,3": ["2","3"], ... },
+  "metricas_tornillos": ["M8",...],
+  "tipo_disposicion": [...],
+  "posicion_motor": [...] 
 }
 """
 from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,31 +32,43 @@ DEFAULT_JSON = os.path.join(BASE_DIR, "data", "catalogos.json")
 
 def load_catalogs(json_path: str = DEFAULT_JSON) -> Dict[str, Any]:
     if not os.path.exists(json_path):
-        raise FileNotFoundError(f"No existe el catálogo JSON: {json_path}")
+        raise FileNotFoundError(f"No existe el JSON de catálogos: {json_path}")
 
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    # Garantiza claves mínimas (para evitar KeyError)
+    # Normalizaciones suaves (para evitar KeyError)
     data.setdefault("materials", [])
-    data.setdefault("eje_od", [])
-    data.setdefault("espesores_by_od", {})
     data.setdefault("diam_espira", [])
     data.setdefault("pasos", [])
     data.setdefault("espesores_chapa", [])
-    data.setdefault("tipo_disposicion", [])
-    data.setdefault("posicion_motor", [])
-    data.setdefault("giro", [])
+    data.setdefault("distancia_testeros", [])
+    data.setdefault("eje_od", [])
+    data.setdefault("espesores_by_od", {})
+    data.setdefault("metricas_tornillos", [])
     data.setdefault("rodamientos", [])
-    data.setdefault("eje_dim", [])
+
+    if "rodamiento_names" not in data or not isinstance(data["rodamiento_names"], list):
+        data["rodamiento_names"] = [
+            (r.get("name") or r.get("ref") or "").strip()
+            for r in data.get("rodamientos", [])
+            if (r.get("name") or r.get("ref"))
+        ]
+
+    # mapa name->rodamiento (para acceder rápido a d/D/B si hace falta)
+    data["_rod_by_name"] = {
+        (r.get("name") or r.get("ref") or "").strip(): r
+        for r in data.get("rodamientos", [])
+        if (r.get("name") or r.get("ref"))
+    }
 
     return data
 
 
-def _to_float_mm(text: str) -> float | None:
+def _to_float(text: str) -> Optional[float]:
     if text is None:
         return None
-    s = str(text).strip().replace(" ", "")
+    s = str(text).strip()
     if not s:
         return None
     s = s.replace(",", ".")
@@ -67,79 +78,77 @@ def _to_float_mm(text: str) -> float | None:
         return None
 
 
-def espesores_for_od(catalogs: Dict[str, Any], eje_od_mm_text: str) -> List[str]:
-    """
-    Devuelve la lista de espesores (strings) para un Ø exterior (string).
-    OJO: la clave del dict suele ir como '60,3' (coma).
-    """
-    if not catalogs:
-        return []
-    od = (eje_od_mm_text or "").strip()
-    if not od:
-        return []
-    # Normaliza: si viene con punto, prueba también con coma
-    by = catalogs.get("espesores_by_od", {}) or {}
-    if od in by:
-        return list(by.get(od) or [])
-    od_alt = od.replace(".", ",")
-    if od_alt in by:
-        return list(by.get(od_alt) or [])
-    return []
-
-
-def rodamientos_refs(catalogs: Dict[str, Any]) -> List[str]:
-    out: List[str] = []
-    for r in (catalogs or {}).get("rodamientos", []) or []:
-        ref = r.get("ref")
-        if ref and ref not in out:
-            out.append(ref)
-    return out
-
-
-def get_rodamiento_by_ref(catalogs: Dict[str, Any], ref: str) -> Dict[str, Any] | None:
-    ref = (ref or "").strip()
-    if not ref:
+def tubo_id_mm(eje_od_mm_text: str, eje_thk_mm_text: str) -> Optional[float]:
+    """Devuelve Ø interior del tubo eje (mm) si se puede calcular."""
+    od = _to_float(eje_od_mm_text)
+    thk = _to_float(eje_thk_mm_text)
+    if od is None or thk is None:
         return None
-    for r in (catalogs or {}).get("rodamientos", []) or []:
-        if (r.get("ref") or "").strip() == ref:
-            return r
-    return None
+    return od - 2.0 * thk
 
 
-def filter_rodamientos_por_eje(rodamientos: List[Dict[str, Any]], eje_od_mm_text: str) -> List[str]:
+def filter_espesores_por_od(catalogs: Dict[str, Any], eje_od_mm_text: str) -> List[str]:
+    """Devuelve espesores disponibles para el OD seleccionado."""
+    od = (eje_od_mm_text or "").strip()
+    espes = catalogs.get("espesores_by_od", {}).get(od, [])
+    return list(espes) if isinstance(espes, list) else []
+
+
+def filter_rodamientos_por_tubo(catalogs: Dict[str, Any], eje_od_mm_text: str, eje_thk_mm_text: str) -> List[str]:
     """
-    Devuelve referencias filtradas según Ø del tubo eje.
-    Regla SIMPLE:
-      - si el rodamiento tiene 'd' (diámetro interior), se admite si d < Ø_eje
-      - si no hay 'd', se devuelve igualmente.
+    Filtra rodamientos en base al tubo eje.
+    Regla:
+      - si se conoce Ø interior (od - 2*thk) => d == Ø interior (±0.1 mm)
+      - si no, pero hay Ø exterior => d < Ø exterior (regla "suave")
+      - si no hay datos => devuelve todos
+    Devuelve nombres (rodamiento_names).
     """
+    rodamientos = catalogs.get("rodamientos", []) or []
     if not rodamientos:
         return []
 
-    eje_od = _to_float_mm(eje_od_mm_text)
-    if eje_od is None:
-        return [r.get("ref") for r in rodamientos if r.get("ref")]
+    od = _to_float(eje_od_mm_text)
+    tid = tubo_id_mm(eje_od_mm_text, eje_thk_mm_text)
 
-    refs: List[str] = []
-    for r in rodamientos:
-        ref = r.get("ref")
-        if not ref:
-            continue
+    out: List[str] = []
+    if tid is not None:
+        for r in rodamientos:
+            d = r.get("d", None)
+            name = (r.get("name") or r.get("ref") or "").strip()
+            if not name or d is None:
+                continue
+            try:
+                d = float(d)
+            except Exception:
+                continue
+            if abs(d - tid) <= 0.1:
+                out.append(name)
 
-        d_val = r.get("d", None)
-        try:
-            d = float(d_val) if d_val is not None else None
-        except Exception:
-            d = None
+    elif od is not None:
+        for r in rodamientos:
+            d = r.get("d", None)
+            name = (r.get("name") or r.get("ref") or "").strip()
+            if not name or d is None:
+                continue
+            try:
+                d = float(d)
+            except Exception:
+                continue
+            if d < od:
+                out.append(name)
 
-        if d is None or d < eje_od:
-            refs.append(ref)
+    else:
+        out = [
+            (r.get("name") or r.get("ref") or "").strip()
+            for r in rodamientos
+            if (r.get("name") or r.get("ref"))
+        ]
 
     # quitar duplicados manteniendo orden
-    out: List[str] = []
     seen = set()
-    for x in refs:
-        if x not in seen:
+    uniq: List[str] = []
+    for x in out:
+        if x and x not in seen:
             seen.add(x)
-            out.append(x)
-    return out
+            uniq.append(x)
+    return uniq

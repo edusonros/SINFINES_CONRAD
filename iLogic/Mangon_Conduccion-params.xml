@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ParamWithValueList xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <version>20080502</version>
+  <parameterTypes>
+    <ParamType>
+      <typeName>Inventor</typeName>
+      <typeCode>0</typeCode>
+    </ParamType>
+    <ParamType>
+      <typeName>String</typeName>
+      <typeCode>1</typeCode>
+    </ParamType>
+    <ParamType>
+      <typeName>Boolean</typeName>
+      <typeCode>2</typeCode>
+    </ParamType>
+  </parameterTypes>
+  <parameters>
+    <ParamWithValue>
+      <name>Mot_Red_001</name>
+      <typeCode>mm</typeCode>
+      <value>105 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Espacio_002</name>
+      <typeCode>mm</typeCode>
+      <value>40 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Sop_Roda_003</name>
+      <typeCode>mm</typeCode>
+      <value>70 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Espacio_004</name>
+      <typeCode>mm</typeCode>
+      <value>50 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Prensa_Estop_005</name>
+      <typeCode>mm</typeCode>
+      <value>80 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Brida_006</name>
+      <typeCode>mm</typeCode>
+      <value>8 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Testero_007</name>
+      <typeCode>mm</typeCode>
+      <value>4 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Espacio_008</name>
+      <typeCode>mm</typeCode>
+      <value>50 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>Inteerior_Tubo_009</name>
+      <typeCode>mm</typeCode>
+      <value>80 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>ø_Eje_Reduc_010</name>
+      <typeCode>mm</typeCode>
+      <value>25 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>ø_Eje_Sopor_Rod_011</name>
+      <typeCode>mm</typeCode>
+      <value>26 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>ø_Eje_Prensa_012</name>
+      <typeCode>mm</typeCode>
+      <value>27 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>ø_Eje_Brid_Test_013</name>
+      <typeCode>mm</typeCode>
+      <value>24 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>ø_Eje_Mec_Int_Tubo_015</name>
+      <typeCode>mm</typeCode>
+      <value>26.1 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d0</name>
+      <typeCode>mm</typeCode>
+      <value>Mot_Red_001</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d3</name>
+      <typeCode>mm</typeCode>
+      <value>Sop_Roda_003</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d2</name>
+      <typeCode>mm</typeCode>
+      <value>Prensa_Estop_005</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d4</name>
+      <typeCode>mm</typeCode>
+      <value>Brida_006</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d5</name>
+      <typeCode>mm</typeCode>
+      <value>Testero_007</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d6</name>
+      <typeCode>mm</typeCode>
+      <value>Espacio_008</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d7</name>
+      <typeCode>mm</typeCode>
+      <value>Inteerior_Tubo_009</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d8</name>
+      <typeCode>mm</typeCode>
+      <value>ø_Eje_Reduc_010</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d9</name>
+      <typeCode>mm</typeCode>
+      <value>ø_Eje_Sopor_Rod_011</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d10</name>
+      <typeCode>mm</typeCode>
+      <value>ø_Eje_Prensa_012</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>ø_Eje_Esp_014</name>
+      <typeCode>mm</typeCode>
+      <value>25 mm</value>
+      <comment />
+      <isKey>false</isKey>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d11</name>
+      <typeCode>mm</typeCode>
+      <value>ø_Eje_Esp_014</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d12</name>
+      <typeCode>mm</typeCode>
+      <value>ø_Eje_Mec_Int_Tubo_015</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d13</name>
+      <typeCode>mm</typeCode>
+      <value>ø_Eje_Brid_Test_013</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d15</name>
+      <typeCode>mm</typeCode>
+      <value>Espacio_002</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+    <ParamWithValue>
+      <name>d16</name>
+      <typeCode>mm</typeCode>
+      <value>Espacio_004</value>
+      <comment />
+      <isKey>false</isKey>
+      <tolerance>Default;Nominal;Document Precision</tolerance>
+    </ParamWithValue>
+  </parameters>
+</ParamWithValueList>

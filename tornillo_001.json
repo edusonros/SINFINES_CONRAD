@@ -1,0 +1,15 @@
+{
+  "global": {
+    "Largo": 4500,
+    "Paso_Espira_01": 200,
+    "ø_Ext_Espira_01": 200,
+    "ø_Int_Espira_01": 60.3,
+    "Espesor_Espira_01": 6,
+    "DiametroExterior": 70,
+    "DiametroInterior": 58,
+    "Espesor": 6,
+    "Testero_007": 4,
+    "Espacio_008": 50,
+    "Interior_Tubo_009": 80
+  }
+}
