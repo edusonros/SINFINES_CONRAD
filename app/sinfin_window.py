@@ -26,12 +26,12 @@ from exporter.inventor_export import export_params_to_csv
 
 # ------------------ UI Helpers ------------------
 
-def to_float_required(x) -> float:
+def _to_float_required(x) -> float:
     s = str(x).strip().replace(",", ".")
     return float(s)
 
 
-def to_float_optional(x) -> Optional[float]:
+def _to_float_optional(x) -> Optional[float]:
     s = str(x).strip().replace(",", ".")
     if not s:
         return None
@@ -1048,12 +1048,6 @@ class SinfinWindow(tk.Toplevel):
     def _on_eje_od_changed(self):
         od_raw = self.v_eje_od.get().strip()
         espes = filter_espesores_por_od(self.catalogs, od_raw)
-
-        # si quieres, normaliza también el propio StringVar:
-        if od_raw != od:
-            self.v_eje_od.set(od)
-
-        espes = filter_espesores_por_od(self.catalogs, od)
         self.cb_eje_thk.configure(values=espes)
 
         if self.v_eje_thk.get().strip() not in espes:
