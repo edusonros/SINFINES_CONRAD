@@ -1047,7 +1047,7 @@ class SinfinWindow(tk.Toplevel):
 
     def _on_eje_od_changed(self):
         od_raw = self.v_eje_od.get().strip()
-        od = _norm_num_text(od_raw)
+        espes = filter_espesores_por_od(self.catalogs, od_raw)
 
         # si quieres, normaliza también el propio StringVar:
         if od_raw != od:
@@ -1101,9 +1101,9 @@ class SinfinWindow(tk.Toplevel):
         Longitud total exterior = longitud entre testeros + longitudes exteriores de mangón (conducción + conducido).
         Si falta algún valor -> el total queda en rojo y mostramos texto indicando qué falta.
         """
-        lt = _to_float(self.v_long_test.get())
-        lc = _to_float(self.v_mangon_ext_conduccion.get())
-        ld = _to_float(self.v_mangon_ext_conducido.get())
+        lt = _to_float_optional(self.v_long_test.get())
+        lc = _to_float_optional(self.v_mangon_ext_conduccion.get())
+        ld = _to_float_optional(self.v_mangon_ext_conducido.get())
 
         missing = []
         if lt is None:
