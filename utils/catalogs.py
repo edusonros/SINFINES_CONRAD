@@ -11,10 +11,9 @@ Estructura esperada en catalogos.json (mínimo):
   "distancia_testeros": [...],
   "rodamientos": [ {"ref":"22208","name":"SKF 22208 E","d":40,"D":80,"B":23}, ... ],
   "rodamiento_names": ["SKF 22208 E", ...]   # opcional, se puede derivar
-  "eje_dim": [...],
-  "eje_od": [[...],
+  "eje_od": [...],
   "espesores_by_od": { "60,3": ["2","3"], ... },
-  "metricas_tornillos": ["M8",...],
+  "metricas_tornillos": ["M8", ...],
   "tipo_disposicion": [...],
   "posicion_motor": [...] 
 }
