@@ -5,6 +5,7 @@ import json
 import math
 import tkinter as tk
 from tkinter import ttk, messagebox
+from turtle import lt
 from typing import Any, List, Optional
 
 from utils.db import (
@@ -1092,19 +1093,12 @@ class SinfinWindow(tk.Toplevel):
                 style="Pending.TCombobox" if self.v_pendiente_medir.get() else "Normal.TCombobox")
 
     def _recalc_longitudes(self):
-        """
-        Longitud total exterior = longitud entre testeros + longitudes exteriores de mangón (conducción + conducido).
-        Si falta algún valor -> el total queda en rojo y mostramos texto indicando qué falta.
-        """
         lt = _to_float_optional(self.v_long_test.get())
         lc = _to_float_optional(self.v_mangon_ext_conduccion.get())
         ld = _to_float_optional(self.v_mangon_ext_conducido.get())
 
-        if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
-    ...
-
-      missing = []
-       if lt is None:
+        missing = []
+        if lt is None:
             missing.append("Longitud entre testeros")
         if lc is None:
             missing.append("Longitud exterior mangón conducción")
@@ -1115,18 +1109,14 @@ class SinfinWindow(tk.Toplevel):
             self.v_long_total_ext.set("")
             self.v_long_total_hint.set(
                 "Falta para calcular: " + " · ".join(missing))
-            if self.ent_long_total_ext:
-                # self.ent_long_total_ext.config(state="normal")
-                self.ent_long_total_ext.config(fg="#ff3b30")  # rojo
-                self.ent_long_total_ext.config(state="readonly")
+            if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
+                self.ent_long_total_ext.config(fg="#ff3b30", state="readonly")
         else:
             total = float(lt) + float(lc) + float(ld)
             self.v_long_total_ext.set(f"{total:.0f}")
             self.v_long_total_hint.set("")
-            if self.ent_long_total_ext:
-                # self.ent_long_total_ext.config(state="normal")
-                self.ent_long_total_ext.config(fg="#000000")
-                self.ent_long_total_ext.config(state="readonly")
+            if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
+                self.ent_long_total_ext.config(fg="#000000", state="readonly")
 
     # ------------------ Progress Tab (Treeview con Estado) ------------------
 
