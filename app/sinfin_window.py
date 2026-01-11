@@ -1050,6 +1050,9 @@ class SinfinWindow(tk.Toplevel):
             self._render_section()
 
     def _on_eje_od_changed(self):
+        if not hasattr(self, "cb_eje_thk"):
+            return
+
         hasattr(self, "cb_eje_thk")
         od_raw = self.v_eje_od.get().strip()
         espes = filter_espesores_por_od(self.catalogs, od_raw)
