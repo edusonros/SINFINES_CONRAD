@@ -16,6 +16,7 @@ Sub Main()
         MessageBox.Show("JSON sin nodo 'global' o sin parámetros.", "iLogic")
         Exit Sub
     End If
+    ShowParamsSummary(dict, jsonPath)
 
     Dim oAsm As AssemblyDocument = ThisDoc.Document
     For Each refDoc As Document In oAsm.AllReferencedDocuments
@@ -23,13 +24,33 @@ Sub Main()
             Continue For
         End If
 
-        ApplyDictToDocParams(refDoc, dict)
+        Dim partPath As String = refDoc.FullFileName
+        Dim partDoc As Document = refDoc
+        Dim openedPart As Boolean = False
 
         Try
-            refDoc.Update()
-            refDoc.Save2(True)
+            If Not String.IsNullOrWhiteSpace(partPath) Then
+                partDoc = ThisApplication.Documents.Open(partPath, True)
+                openedPart = True
+            End If
+        Catch
+            partDoc = refDoc
+        End Try
+
+        Try
+            ApplyDictToDocParams(partDoc, dict)
+            MessageBox.Show("Actualizando IPT: " & partDoc.FullFileName, "iLogic")
+            partDoc.Update()
+            partDoc.Save2(True)
         Catch
             ' Silencio: si está read-only o no procede
+        Finally
+            If openedPart Then
+                Try
+                    partDoc.Close(True)
+                Catch
+                End Try
+            End If
         End Try
     Next
 
@@ -42,11 +63,22 @@ Sub Main()
 
     ' Exportar PDFs (conjunto + piezas)
     Try
+        MessageBox.Show("Iniciando exportación de PDFs (IDW)...", "iLogic")
         iLogicVb.RunRule("03_Exportar_TODO_P")
     Catch
     End Try
 
     MessageBox.Show("Parámetros aplicados a IPTs y documentos actualizados.", "iLogic")
+End Sub
+
+Private Sub ShowParamsSummary(dict As Dictionary(Of String, Object), jsonPath As String)
+    Dim sb As New System.Text.StringBuilder()
+    sb.AppendLine("JSON leído: " & jsonPath)
+    sb.AppendLine("Parámetros detectados:")
+    For Each kvp In dict
+        sb.AppendLine(" - " & kvp.Key & " = " & CStr(kvp.Value))
+    Next
+    MessageBox.Show(sb.ToString(), "Parámetros JSON")
 End Sub
 
 Private Function ParseGlobalParams(jsonText As String) As Dictionary(Of String, Object)
