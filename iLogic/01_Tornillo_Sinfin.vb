@@ -1,5 +1,3 @@
-AddReference "System.Web.Extensions"
-
 '========================================
 ' 01_Tornillo_Sinfin
 ' Lee JSON y aplica parámetros SOLO a IPTs
