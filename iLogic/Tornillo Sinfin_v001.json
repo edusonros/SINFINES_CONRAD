@@ -1,11 +1,11 @@
 {
   "global": {
-    "Dist_Testeros": "4150",
-    "Paso_Espira_01": "150",
-    "DiametroExterior": "76.1",
-    "ø_Int_Espira_01": "76.1",
-    "ø_Ext_Espira_01": "150",
-    "espesor_espira_01": "6",
-    "espesor_testero": "4"
+    "Dist_Testeros": "2300",
+    "Paso_Espira_01": "175",
+    "DiametroExterior": "60.3",
+    "ø_Int_Espira_01": "60.3",
+    "ø_Ext_Espira_01": "175",
+    "espesor_espira_01": "4",
+    "espesor_testero": "5"
   }
 }

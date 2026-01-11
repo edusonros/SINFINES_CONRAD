@@ -193,8 +193,16 @@ class SinfinWindow(tk.Toplevel):
         self.v_eje_thk = tk.StringVar()
 
         # Automático: mangón Ø (macizo) (lo rellena _auto_from_tubo si está vacío)
-        self.v_mangon_conduccion = tk.StringVar()
-        self.v_mangon_conducido = tk.StringVar()
+         self.v_mangon_conduccion = tk.StringVar()
+         self.v_mangon_conducido = tk.StringVar()
+
+
++        self.v_tubo_int_conduccion = tk.StringVar()
++        self.v_tubo_int_conducido = tk.StringVar()
++        self.v_mangon_stock_conduccion = tk.StringVar()
++        self.v_mangon_stock_conducido = tk.StringVar()
++        self.v_mangon_prov_conduccion = tk.StringVar(value="Pendiente selección")
++        self.v_mangon_prov_conducido = tk.StringVar(value="Pendiente selección")
 
         # Longitudes exteriores mangones (para L total exterior)
         self.v_mangon_ext_conduccion = tk.StringVar()
@@ -267,21 +275,32 @@ class SinfinWindow(tk.Toplevel):
         (Si falta alguno, lanzamos error con messagebox)
         """
         d = {
-            "Dist_Testeros": self.v_long_test.get().strip(),
-            "Paso_Espira_01": self.v_paso1.get().strip(),
-            "DiametroExterior": self.v_eje_od.get().strip(),
-            "ø_Int_Espira_01": self.v_eje_od.get().strip(),
-            "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
-            "espesor_espira_01": self.v_espesor_espira.get().strip(),
-            # opcional
-            "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
-        }
-
-        # Validación rápida
-        faltan = [k for k, v in d.items() if not str(v).strip()]
-        if faltan:
-            raise ValueError(
-                "Faltan datos para generar planos: " + ", ".join(faltan))
+            "longitud_entre_testeros": self.v_long_test.get().strip(),
+             "paso_espira": self.v_paso1.get().strip(),
+             "diametro_tubo": self.v_eje_od.get().strip(),
+             "espesor_tubo": self.v_eje_thk.get().strip(),
+             "diametro_espira": self.v_diam_espira.get().strip(),
+             "Largo": self.v_long_test.get().strip(),
+             "Paso_Espira_01": self.v_paso1.get().strip(),
+             "ø_Int_Espira_01": self.v_eje_od.get().strip(),
+             "DiametroExterior": self.v_eje_od.get().strip(),
+             "ø_Tubo_Interior": self.v_tubo_int_conduccion.get().strip(),
+             "Espesor_Espira_01": self.v_espesor_espira.get().strip(),
+             "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
+             "espesor_chapa": self.v_espesor_espira.get().strip(),
+             # opcional
+             "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
+             "espesor_testero": self.v_002A_testeros.get().strip()
+             or self.v_002B_testeros.get().strip()
+             or "10",
+         }
+ 
+         # Validación rápida
+         faltan = [k for k, v in d.items() if not str(v).strip()]
+         if faltan:
+             raise ValueError(
+                 "Faltan datos para generar planos: " + ", ".join(faltan))
+                 "Faltan datos para generar planos: " + ", ".join(faltan))
 
         return d
 
@@ -508,7 +527,18 @@ class SinfinWindow(tk.Toplevel):
             id_mm = None
 
         if id_mm is None:
+            self.v_tubo_int_conduccion.set("")
+            self.v_tubo_int_conducido.set("")
+            self.v_mangon_stock_conduccion.set("")
+            self.v_mangon_stock_conducido.set("")
             return
+        
+         tubo_int = id_mm + 0.2
+         mangon_compra = self._ceil_to_5(tubo_int)
+         self.v_tubo_int_conduccion.set(f"{tubo_int:.1f}")
+         self.v_tubo_int_conducido.set(f"{tubo_int:.1f}")
+         self.v_mangon_stock_conduccion.set(str(mangon_compra))
+         self.v_mangon_stock_conducido.set(str(mangon_compra))
 
         mangon = self._ceil_to_5(id_mm + 10.0)
 
@@ -671,6 +701,86 @@ class SinfinWindow(tk.Toplevel):
                     lambda _e: self._on_eje_thk_changed())
         row = self._add_row(form, row, "Espesor tubo eje (mm)", cb_thk)
         self.cb_eje_thk = cb_thk
+        
+        def mangon_cols(left_var: tk.StringVar, right_var: tk.StringVar):
+             f = ttk.Frame(form)
+             ent_left = tk.Entry(
+                 f,
+                 textvariable=left_var,
+                 bg="#ffffff",
+                 fg="#000000",
+                 insertbackground="#000000",
+                 relief="flat",
+                 width=10,
+             )
+             ent_left.config(state="readonly")
+             ent_left.grid(row=0, column=0, padx=(0, 8))
+             ent_right = tk.Entry(
+                 f,
+                 textvariable=right_var,
+                 bg="#ffffff",
+                 fg="#000000",
+                 insertbackground="#000000",
+                 relief="flat",
+                 width=10,
+             )
+             ent_right.config(state="readonly")
+             ent_right.grid(row=0, column=1)
+             return f
+ 
+         row = self._add_row(
+             form,
+             row,
+             "Mangón conducción (Ø tubo int  0.2 / Ø compra)",
+             mangon_cols(self.v_tubo_int_conduccion,
+                         self.v_mangon_stock_conduccion),
+             action_widget=ttk.Button(
+                 form,
+                 text="Pedir ofertas Mangones",
+                 command=lambda: self._stub_offer("Mangones: conducción"),
+             ),
+             expand=False,
+         )
+ 
+         row = self._add_row(
+             form,
+             row,
+             "Mangón conducido (Ø tubo int  0.2 / Ø compra)",
+             mangon_cols(self.v_tubo_int_conducido,
+                         self.v_mangon_stock_conducido),
+             expand=False,
+         )
+ 
+         def provisional_entry(var: tk.StringVar):
+             ent = tk.Entry(
+                 form,
+                 textvariable=var,
+                 bg="#ffffff",
+                 fg="#ff3b30",
+                 insertbackground="#ff3b30",
+                 relief="flat",
+                 width=18,
+             )
+             ent.config(state="readonly")
+             return ent
+ 
+         row = self._add_row(
+             form,
+             row,
+             "Mangón conducción (provisional)",
+             provisional_entry(self.v_mangon_prov_conduccion),
+             hint="Se ajusta al elegir motorreductor/soporte/prensaestopas.",
+             expand=False,
+         )
+ 
+         row = self._add_row(
+             form,
+             row,
+             "Mangón conducido (provisional)",
+             provisional_entry(self.v_mangon_prov_conducido),
+             hint="Se ajusta al elegir brida/soporte de rodamiento.",
+             expand=False,
+         )
 
         # Mangones extremos Ø (automático si vacío)
         ent_mc = ttk.Entry(
