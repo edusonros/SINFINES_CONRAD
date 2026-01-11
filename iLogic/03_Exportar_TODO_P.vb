@@ -1,5 +1,3 @@
-Imports System.IO
-
 '========================================
 ' 03_Exportar_TODO_P
 ' Exporta PDF del conjunto y de todas las piezas (si existe su IDW)
@@ -8,17 +6,17 @@ Imports System.IO
 
 Sub Main()
     Dim outRoot As String = "C:\edusonros_projects\SINFINES_CONRAD\PDF\"
-    If Not Directory.Exists(outRoot) Then
-        Directory.CreateDirectory(outRoot)
+    If Not System.IO.Directory.Exists(outRoot) Then
+        System.IO.Directory.CreateDirectory(outRoot)
     End If
 
     Dim asmDoc As AssemblyDocument = ThisDoc.Document
 
     ' 1) Exportar IDW del conjunto (mismo nombre que IAM)
     Dim asmPath As String = asmDoc.FullFileName
-    Dim asmFolder As String = Path.GetDirectoryName(asmPath)
-    Dim asmNameNoExt As String = Path.GetFileNameWithoutExtension(asmPath)
-    Dim idwAsm As String = Path.Combine(asmFolder, asmNameNoExt & ".idw")
+    Dim asmFolder As String = System.IO.Path.GetDirectoryName(asmPath)
+    Dim asmNameNoExt As String = System.IO.Path.GetFileNameWithoutExtension(asmPath)
+    Dim idwAsm As String = System.IO.Path.Combine(asmFolder, asmNameNoExt & ".idw")
 
     ExportIdwByRunningRule(idwAsm, "02_Exportar_PDF")
 
@@ -33,9 +31,9 @@ Sub Main()
             Continue For
         End If
 
-        Dim pFolder As String = Path.GetDirectoryName(pPath)
-        Dim pName As String = Path.GetFileNameWithoutExtension(pPath)
-        Dim idwPart As String = Path.Combine(pFolder, pName & ".idw")
+        Dim pFolder As String = System.IO.Path.GetDirectoryName(pPath)
+        Dim pName As String = System.IO.Path.GetFileNameWithoutExtension(pPath)
+        Dim idwPart As String = System.IO.Path.Combine(pFolder, pName & ".idw")
 
         ExportIdwByRunningRule(idwPart, "02_Exportar_PDF")
     Next
@@ -44,7 +42,7 @@ Sub Main()
 End Sub
 
 Private Sub ExportIdwByRunningRule(idwPath As String, ruleName As String)
-    If Not File.Exists(idwPath) Then
+    If Not System.IO.File.Exists(idwPath) Then
         ' No hay plano para esa pieza → lo saltamos
         Exit Sub
     End If

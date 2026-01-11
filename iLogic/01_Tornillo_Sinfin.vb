@@ -1,5 +1,4 @@
 AddReference "System.Web.Extensions"
-Imports System.Web.Script.Serialization
 
 '========================================
 ' 01_Tornillo_Sinfin
@@ -14,7 +13,7 @@ Sub Main()
     End If
 
     Dim txt As String = System.IO.File.ReadAllText(jsonPath)
-    Dim ser As New JavaScriptSerializer()
+    Dim ser As New System.Web.Script.Serialization.JavaScriptSerializer()
     Dim root = ser.DeserializeObject(txt)
 
     Dim globals As Object = Nothing
