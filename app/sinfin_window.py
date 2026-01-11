@@ -288,16 +288,13 @@ class SinfinWindow(tk.Toplevel):
         return d
 
     def _on_generar_planos(self):
-
-        json_path = Path(
-            r"C:\edusonros_projects\SINFINES_CONRAD\iLogic\Tornillo Sinfin_v001.json")
-        export_params_to_json(definicion, json_path)
-
         try:
             definicion = self._get_definicion_completa()
-            export_params_to_csv(definicion)
 
-            # IMPORT DIFERIDO (solo si pulsas el botón)
+            json_path = Path(
+                r"C:\edusonros_projects\SINFINES_CONRAD\iLogic\Tornillo Sinfin_v001.json")
+            export_params_to_json(definicion, json_path)
+
             from exporter.run_inventor import run_inventor
             run_inventor()
 

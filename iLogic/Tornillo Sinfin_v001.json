@@ -1,0 +1,11 @@
+{
+  "global": {
+    "longitud_entre_testeros": "4500",
+    "paso_espira": "175",
+    "diametro_tubo": "60.3",
+    "espesor_tubo": "3.2",
+    "diametro_espira": "175",
+    "espesor_chapa": "5",
+    "espesor_testero": "10"
+  }
+}
