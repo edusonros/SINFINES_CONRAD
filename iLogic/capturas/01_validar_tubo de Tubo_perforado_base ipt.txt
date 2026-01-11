@@ -1,0 +1,40 @@
+'=====================================================
+' 01_Validar_Tubo
+' Valida parámetros y mantiene coherencia geométrica
+'=====================================================
+
+'--- Leer parámetros (siempre con Parameter() para tener el valor actualizado)
+Dim L As Double    = Parameter("Largo")              ' mm
+Dim dExt As Double = Parameter("DiametroExterior")   ' mm
+Dim e As Double    = Parameter("Espesor")            ' mm
+
+'--- Mínimos recomendados (ajústalos cuando quieras)
+Dim Lmin As Double = 50 mm     ' largo mínimo práctico
+Dim emin As Double = 1 mm      ' espesor mínimo
+
+'--- Validación Largo
+If L < Lmin Then
+	MessageBox.Show("Largo demasiado pequeño. Se ajustará a " & Lmin & ".", "Validación Tubo")
+	L = Lmin
+End If
+
+'--- Validación Espesor
+If e < emin Then
+	MessageBox.Show("El espesor debe ser ≥ " & emin & ".", "Validación Tubo")
+	e = emin
+End If
+
+'--- Evitar diámetro interior negativo o cero
+If (2 * e) >= dExt Then
+	MessageBox.Show("Espesor demasiado grande: el diámetro interior sería <= 0." _
+	& vbCrLf & "Se ajustará automáticamente.", "Validación Tubo")
+	e = dExt / 4
+End If
+
+'--- Escribir parámetros corregidos
+Parameter("Largo") = L
+Parameter("Espesor") = e
+Parameter("DiametroInterior") = dExt - (2 * e)
+
+'--- Actualizar modelo
+InventorVb.DocumentUpdate()

@@ -22,7 +22,8 @@ from utils.catalogs import (
     filter_rodamientos_por_tubo,
     tubo_id_mm,
 )
-from exporter.inventor_export import export_params_to_csv
+from pathlib import Path
+from exporter.inventor_export import export_params_to_json
 
 
 # ------------------ UI Helpers ------------------
@@ -287,9 +288,11 @@ class SinfinWindow(tk.Toplevel):
         return d
 
     def _on_generar_planos(self):
-        """
-        Exporta params.csv y ejecuta Inventor+iLogic.
-        """
+
+        json_path = Path(
+            r"C:\edusonros_projects\SINFINES_CONRAD\iLogic\Tornillo Sinfin_v001.json")
+        export_params_to_json(definicion, json_path)
+
         try:
             definicion = self._get_definicion_completa()
             export_params_to_csv(definicion)

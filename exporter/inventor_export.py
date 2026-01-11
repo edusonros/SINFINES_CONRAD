@@ -1,6 +1,8 @@
 import csv
 import math
 from pathlib import Path
+import json
+from pathlib import Path
 
 
 ILOGIC_DIR = Path(r"C:\edusonros_projects\SINFINES_CONRAD\iLogic")
@@ -18,6 +20,16 @@ def _to_float(x, *, field=""):
         return float(s)
     except ValueError:
         raise ValueError(f"No se puede convertir a número ({field}): {x!r}")
+
+
+def export_params_to_json(definicion: dict, json_path: Path) -> Path:
+    payload = {"global": definicion}
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return json_path
 
 
 def fnum(x, default=None) -> float:

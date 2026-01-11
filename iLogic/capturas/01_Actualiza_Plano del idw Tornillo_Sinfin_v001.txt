@@ -1,0 +1,21 @@
+'========================================
+' 01_Actualizar_Plano
+' Actualiza el plano activo (y fuerza regen)
+'========================================
+
+Try
+    Dim oDoc As Inventor.DrawingDocument = ThisApplication.ActiveDocument
+
+    ' Actualiza el documento
+    oDoc.Update()
+
+    ' Fuerza actualización “fuerte” (si está disponible)
+    Try
+        ThisApplication.ActiveDocument.Update2(True)
+    Catch
+        ' Algunas versiones/estados no soportan Update2 aquí, no pasa nada
+    End Try
+
+Catch ex As Exception
+    MessageBox.Show("Error al actualizar el plano: " & ex.Message, "iLogic")
+End Try
