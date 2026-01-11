@@ -11,18 +11,11 @@ Sub Main()
     End If
 
     Dim txt As String = System.IO.File.ReadAllText(jsonPath)
-    Dim ser As New System.Web.Script.Serialization.JavaScriptSerializer()
-    Dim root = ser.DeserializeObject(txt)
-
-    Dim globals As Object = Nothing
-    Try
-        globals = DirectCast(root, Dictionary(Of String, Object))("global")
-    Catch
-        MessageBox.Show("JSON sin nodo 'global'.", "iLogic")
+    Dim dict = ParseGlobalParams(txt)
+    If dict Is Nothing OrElse dict.Count = 0 Then
+        MessageBox.Show("JSON sin nodo 'global' o sin parámetros.", "iLogic")
         Exit Sub
-    End Try
-
-    Dim dict = DirectCast(globals, Dictionary(Of String, Object))
+    End If
 
     Dim oAsm As AssemblyDocument = ThisDoc.Document
     For Each refDoc As Document In oAsm.AllReferencedDocuments
@@ -55,6 +48,47 @@ Sub Main()
 
     MessageBox.Show("Parámetros aplicados a IPTs y documentos actualizados.", "iLogic")
 End Sub
+
+Private Function ParseGlobalParams(jsonText As String) As Dictionary(Of String, Object)
+    Dim globalMatch As System.Text.RegularExpressions.Match =
+        System.Text.RegularExpressions.Regex.Match(
+            jsonText,
+            """global""\s*:\s*\{(?<body>.*?)\}",
+            System.Text.RegularExpressions.RegexOptions.Singleline
+        )
+
+    If Not globalMatch.Success Then
+        Return Nothing
+    End If
+
+    Dim body As String = globalMatch.Groups("body").Value
+    Dim dict As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase)
+    Dim pairRegex As New System.Text.RegularExpressions.Regex(
+        """(?<key>[^""]+)""\s*:\s*(?:""(?<str>[^""]*)""|(?<num>-?\d+(?:[.,]\d+)?))"
+    )
+
+    For Each m As System.Text.RegularExpressions.Match In pairRegex.Matches(body)
+        Dim key As String = m.Groups("key").Value
+        If m.Groups("str").Success Then
+            dict(key) = m.Groups("str").Value
+        Else
+            Dim numText As String = m.Groups("num").Value.Replace(",", ".")
+            Dim val As Double
+            If Double.TryParse(
+                numText,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                val
+            ) Then
+                dict(key) = val
+            Else
+                dict(key) = numText
+            End If
+        End If
+    Next
+
+    Return dict
+End Function
 
 Private Sub ApplyDictToDocParams(doc As Document, dict As Dictionary(Of String, Object))
     Dim params As Parameters = Nothing
