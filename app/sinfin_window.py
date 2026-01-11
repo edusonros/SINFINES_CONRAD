@@ -266,15 +266,13 @@ class SinfinWindow(tk.Toplevel):
         Devuelve un dict con todos los parámetros necesarios para exportar a Inventor.
         (Si falta alguno, lanzamos error con messagebox)
         """
-        # Ejemplo mínimo para que export_params_to_csv no reviente:
-        # Ajusta los nombres para que coincidan con inventor_export.py
         d = {
-            "longitud_entre_testeros": self.v_long_test.get().strip(),
-            "paso_espira": self.v_paso1.get().strip(),
-            "diametro_tubo": self.v_eje_od.get().strip(),
-            "espesor_tubo": self.v_eje_thk.get().strip(),
-            "diametro_espira": self.v_diam_espira.get().strip(),
-            "espesor_chapa": self.v_espesor_espira.get().strip(),
+            "Dist_Testeros": self.v_long_test.get().strip(),
+            "Paso_Espira_01": self.v_paso1.get().strip(),
+            "DiametroExterior": self.v_eje_od.get().strip(),
+            "ø_Int_Espira_01": self.v_eje_od.get().strip(),
+            "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
+            "espesor_espira_01": self.v_espesor_espira.get().strip(),
             # opcional
             "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
         }

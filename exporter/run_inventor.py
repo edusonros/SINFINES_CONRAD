@@ -19,7 +19,7 @@ def run_inventor():
     inv.Visible = True
 
     doc = inv.Documents.Open(str(ASSEMBLY_PATH), True)
-    inv.ActiveDocument = doc
+    doc.Activate()
 
     inv.RunRule("01_Tornillo_Sinfin")
 
