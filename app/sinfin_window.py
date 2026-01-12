@@ -20,6 +20,7 @@ from utils.catalogs import (
     load_catalogs,
     filter_espesores_por_od,
     filter_rodamientos_por_tubo,
+    is_mecanizado_ok,
     tubo_id_mm,
 )
 from pathlib import Path
@@ -193,16 +194,16 @@ class SinfinWindow(tk.Toplevel):
         self.v_eje_thk = tk.StringVar()
 
         # Automático: mangón Ø (macizo) (lo rellena _auto_from_tubo si está vacío)
-         self.v_mangon_conduccion = tk.StringVar()
-         self.v_mangon_conducido = tk.StringVar()
-
-
-+        self.v_tubo_int_conduccion = tk.StringVar()
-+        self.v_tubo_int_conducido = tk.StringVar()
-+        self.v_mangon_stock_conduccion = tk.StringVar()
-+        self.v_mangon_stock_conducido = tk.StringVar()
-+        self.v_mangon_prov_conduccion = tk.StringVar(value="Pendiente selección")
-+        self.v_mangon_prov_conducido = tk.StringVar(value="Pendiente selección")
+        self.v_mangon_conduccion = tk.StringVar()
+        self.v_mangon_conducido = tk.StringVar()
+        self.v_tubo_int_conduccion = tk.StringVar()
+        self.v_tubo_int_conducido = tk.StringVar()
+        self.v_mangon_stock_conduccion = tk.StringVar()
+        self.v_mangon_stock_conducido = tk.StringVar()
+        self.v_mangon_prov_conduccion = tk.StringVar(
+            value="Pendiente selección")
+        self.v_mangon_prov_conducido = tk.StringVar(
+            value="Pendiente selección")
 
         # Longitudes exteriores mangones (para L total exterior)
         self.v_mangon_ext_conduccion = tk.StringVar()
@@ -210,7 +211,6 @@ class SinfinWindow(tk.Toplevel):
 
         self.v_mangones_intermedios = tk.BooleanVar(value=False)
         self.v_num_mangones_intermedios = tk.StringVar()
-        self.v_diam_mangon_intermedio = tk.StringVar()
 
         # Tornillería automática (texto)
         self.v_metrica_tornillos = tk.StringVar()
@@ -276,31 +276,30 @@ class SinfinWindow(tk.Toplevel):
         """
         d = {
             "longitud_entre_testeros": self.v_long_test.get().strip(),
-             "paso_espira": self.v_paso1.get().strip(),
-             "diametro_tubo": self.v_eje_od.get().strip(),
-             "espesor_tubo": self.v_eje_thk.get().strip(),
-             "diametro_espira": self.v_diam_espira.get().strip(),
-             "Largo": self.v_long_test.get().strip(),
-             "Paso_Espira_01": self.v_paso1.get().strip(),
-             "ø_Int_Espira_01": self.v_eje_od.get().strip(),
-             "DiametroExterior": self.v_eje_od.get().strip(),
-             "ø_Tubo_Interior": self.v_tubo_int_conduccion.get().strip(),
-             "Espesor_Espira_01": self.v_espesor_espira.get().strip(),
-             "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
-             "espesor_chapa": self.v_espesor_espira.get().strip(),
-             # opcional
-             "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
-             "espesor_testero": self.v_002A_testeros.get().strip()
-             or self.v_002B_testeros.get().strip()
-             or "10",
-         }
- 
-         # Validación rápida
-         faltan = [k for k, v in d.items() if not str(v).strip()]
-         if faltan:
-             raise ValueError(
-                 "Faltan datos para generar planos: " + ", ".join(faltan))
-                 "Faltan datos para generar planos: " + ", ".join(faltan))
+            "paso_espira": self.v_paso1.get().strip(),
+            "diametro_tubo": self.v_eje_od.get().strip(),
+            "espesor_tubo": self.v_eje_thk.get().strip(),
+            "diametro_espira": self.v_diam_espira.get().strip(),
+            "Largo": self.v_long_test.get().strip(),
+            "Paso_Espira_01": self.v_paso1.get().strip(),
+            "ø_Int_Espira_01": self.v_eje_od.get().strip(),
+            "DiametroExterior": self.v_eje_od.get().strip(),
+            "ø_Tubo_Interior": self.v_tubo_int_conduccion.get().strip(),
+            "Espesor_Espira_01": self.v_espesor_espira.get().strip(),
+            "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
+            "espesor_chapa": self.v_espesor_espira.get().strip(),
+            # opcional
+            "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
+            "espesor_testero": self.v_002A_testeros.get().strip()
+            or self.v_002B_testeros.get().strip()
+            or "10",
+        }
+
+        # Validación rápida
+        faltan = [k for k, v in d.items() if not str(v).strip()]
+        if faltan:
+            raise ValueError(
+                "Faltan datos para generar planos: " + ", ".join(faltan))
 
         return d
 
@@ -519,6 +518,9 @@ class SinfinWindow(tk.Toplevel):
         - Calcula ID del tubo y propone mangones = (ID + 10) redondeado a 5 por arriba.
         - Tornillería automática: M12 x (ID + 25) redondeada a 5 por arriba.
         """
+        if not is_mecanizado_ok(self.v_eje_od.get(), self.v_eje_thk.get()):
+            return
+
         try:
             id_calc = tubo_id_mm(self.v_eje_od.get(), self.v_eje_thk.get())
             id_mm = float(id_calc) if id_calc is not None and str(
@@ -532,13 +534,13 @@ class SinfinWindow(tk.Toplevel):
             self.v_mangon_stock_conduccion.set("")
             self.v_mangon_stock_conducido.set("")
             return
-        
-         tubo_int = id_mm + 0.2
-         mangon_compra = self._ceil_to_5(tubo_int)
-         self.v_tubo_int_conduccion.set(f"{tubo_int:.1f}")
-         self.v_tubo_int_conducido.set(f"{tubo_int:.1f}")
-         self.v_mangon_stock_conduccion.set(str(mangon_compra))
-         self.v_mangon_stock_conducido.set(str(mangon_compra))
+
+        tubo_int = id_mm + 0.2
+        mangon_compra = self._ceil_to_5(tubo_int)
+        self.v_tubo_int_conduccion.set(f"{tubo_int:.1f}")
+        self.v_tubo_int_conducido.set(f"{tubo_int:.1f}")
+        self.v_mangon_stock_conduccion.set(str(mangon_compra))
+        self.v_mangon_stock_conducido.set(str(mangon_compra))
 
         mangon = self._ceil_to_5(id_mm + 10.0)
 
@@ -701,126 +703,84 @@ class SinfinWindow(tk.Toplevel):
                     lambda _e: self._on_eje_thk_changed())
         row = self._add_row(form, row, "Espesor tubo eje (mm)", cb_thk)
         self.cb_eje_thk = cb_thk
-        
-        def mangon_cols(left_var: tk.StringVar, right_var: tk.StringVar):
-             f = ttk.Frame(form)
-             ent_left = tk.Entry(
-                 f,
-                 textvariable=left_var,
-                 bg="#ffffff",
-                 fg="#000000",
-                 insertbackground="#000000",
-                 relief="flat",
-                 width=10,
-             )
-             ent_left.config(state="readonly")
-             ent_left.grid(row=0, column=0, padx=(0, 8))
-             ent_right = tk.Entry(
-                 f,
-                 textvariable=right_var,
-                 bg="#ffffff",
-                 fg="#000000",
-                 insertbackground="#000000",
-                 relief="flat",
-                 width=10,
-             )
-             ent_right.config(state="readonly")
-             ent_right.grid(row=0, column=1)
-             return f
- 
-         row = self._add_row(
-             form,
-             row,
-             "Mangón conducción (Ø tubo int  0.2 / Ø compra)",
-             mangon_cols(self.v_tubo_int_conduccion,
-                         self.v_mangon_stock_conduccion),
-             action_widget=ttk.Button(
-                 form,
-                 text="Pedir ofertas Mangones",
-                 command=lambda: self._stub_offer("Mangones: conducción"),
-             ),
-             expand=False,
-         )
- 
-         row = self._add_row(
-             form,
-             row,
-             "Mangón conducido (Ø tubo int  0.2 / Ø compra)",
-             mangon_cols(self.v_tubo_int_conducido,
-                         self.v_mangon_stock_conducido),
-             expand=False,
-         )
- 
-         def provisional_entry(var: tk.StringVar):
-             ent = tk.Entry(
-                 form,
-                 textvariable=var,
-                 bg="#ffffff",
-                 fg="#ff3b30",
-                 insertbackground="#ff3b30",
-                 relief="flat",
-                 width=18,
-             )
-             ent.config(state="readonly")
-             return ent
- 
-         row = self._add_row(
-             form,
-             row,
-             "Mangón conducción (provisional)",
-             provisional_entry(self.v_mangon_prov_conduccion),
-             hint="Se ajusta al elegir motorreductor/soporte/prensaestopas.",
-             expand=False,
-         )
- 
-         row = self._add_row(
-             form,
-             row,
-             "Mangón conducido (provisional)",
-             provisional_entry(self.v_mangon_prov_conducido),
-             hint="Se ajusta al elegir brida/soporte de rodamiento.",
-             expand=False,
-         )
 
-        # Mangones extremos Ø (automático si vacío)
-        ent_mc = ttk.Entry(
-            form, textvariable=self.v_mangon_conduccion, width=18)
+        def mangon_cols(left_var: tk.StringVar, right_var: tk.StringVar) -> tk.Frame:
+            f = ttk.Frame(form)
+            ent_left = tk.Entry(
+                f,
+                textvariable=left_var,
+                bg="#ffffff",
+                fg="#000000",
+                insertbackground="#000000",
+                relief="flat",
+                width=10,
+            )
+            ent_left.config(state="readonly")
+            ent_left.grid(row=0, column=0, padx=(0, 8))
+            ent_right = tk.Entry(
+                f,
+                textvariable=right_var,
+                bg="#ffffff",
+                fg="#000000",
+                insertbackground="#000000",
+                relief="flat",
+                width=10,
+            )
+            ent_right.config(state="readonly")
+            ent_right.grid(row=0, column=1)
+            return f
+
         row = self._add_row(
             form,
             row,
-            "Mangón conducción Ø macizo (mm) [auto]",
-            ent_mc,
+            "Mangón conducción (Ø tubo int  +0.2 / Ø de compra)",
+            mangon_cols(self.v_tubo_int_conduccion,
+                        self.v_mangon_stock_conduccion),
+            action_widget=ttk.Button(
+                form,
+                text="Pedir ofertas Mangones",
+                command=lambda: self._stub_offer("Mangones: conducción"),
+            ),
             expand=False,
         )
 
-        ent_md = ttk.Entry(
-            form, textvariable=self.v_mangon_conducido, width=18)
         row = self._add_row(
             form,
             row,
-            "Mangón conducido Ø macizo (mm) [auto]",
-            ent_md,
+            "Mangón conducido (Ø tubo int  +0.2 / Ø de compra)",
+            mangon_cols(self.v_tubo_int_conducido,
+                        self.v_mangon_stock_conducido),
             expand=False,
         )
 
-        # Longitudes exteriores mangones (para longitud total exterior)
-        ent_lc = ttk.Entry(
-            form, textvariable=self.v_mangon_ext_conduccion, width=18)
+        def provisional_entry(var: tk.StringVar):
+            ent = tk.Entry(
+                form,
+                textvariable=var,
+                bg="#ffffff",
+                fg="#ff3b30",
+                insertbackground="#ff3b30",
+                relief="flat",
+                width=18,
+            )
+            ent.config(state="readonly")
+            return ent
+
         row = self._add_row(
             form,
             row,
-            "Longitud exterior mangón conducción (mm)",
-            ent_lc,
+            "Longitud Mangón conducción (provisional)",
+            provisional_entry(self.v_mangon_prov_conduccion),
+            hint="Se ajusta al elegir motorreductor/soporte/prensaestopas.",
             expand=False,
         )
 
-        ent_ld = ttk.Entry(
-            form, textvariable=self.v_mangon_ext_conducido, width=18)
         row = self._add_row(
             form,
             row,
-            "Longitud exterior mangón conducido (mm)",
-            ent_ld,
+            "Longitud Mangón conducido (provisional)",
+            provisional_entry(self.v_mangon_prov_conducido),
+            hint="Se ajusta al elegir brida/soporte de rodamiento.",
             expand=False,
         )
 
@@ -848,12 +808,21 @@ class SinfinWindow(tk.Toplevel):
             )
 
             ent_d = ttk.Entry(
-                form, textvariable=self.v_diam_mangon_intermedio, width=18)
+                form, textvariable=self.v_mangon_conduccion, width=18)
+            ent_d2 = ttk.Entry(
+                form, textvariable=self.v_mangon_conducido, width=18)
+            f_diam = ttk.Frame(form)
+            f_diam.grid_columnconfigure(0, weight=0)
+            f_diam.grid_columnconfigure(1, weight=0)
+            ent_d.grid(in_=f_diam, row=0, column=0, sticky="w")
+            ent_d2.grid(in_=f_diam, row=0, column=1,
+                        sticky="w", padx=(8, 0))
             row = self._add_row(
                 form,
                 row,
                 "Diámetro del mismo (mm) [libre]",
-                ent_d,
+                mangon_cols(self.v_tubo_int_conducido,
+                            self.v_mangon_stock_conducido),
                 action_widget=offer_btn("Mangones intermedios (material)"),
                 expand=False,
             )
@@ -901,240 +870,265 @@ class SinfinWindow(tk.Toplevel):
             action_widget=offer_btn("Espiras: espesor"),
         )
 
-        # Pasos (sin botones)
-        cb_p1 = ttk.Combobox(form, textvariable=self.v_paso1, values=self.catalogs.get(
-            "pasos", []), state="readonly")
-        row = self._add_row(form, row, "PASO ESPIRAS – Paso 1 (mm)", cb_p1)
+        # Pasos (sin botones) con longitud de tramo
+        def _paso_with_longitud(paso_var: tk.StringVar, long_var: tk.StringVar) -> ttk.Frame:
+            frame = ttk.Frame(form)
+            cb = ttk.Combobox(
+                frame,
+                textvariable=paso_var,
+                values=self.catalogs.get("pasos", []),
+                state="readonly",
+                width=8,
+            )
+            lbl = ttk.Label(frame, text="Longitud")
+            ent = ttk.Entry(frame, textvariable=long_var, width=8)
+            cb.grid(row=0, column=0, sticky="w")
+            lbl.grid(row=0, column=1, sticky="w", padx=(8, 6))
+            ent.grid(row=0, column=2, sticky="w")
+            return frame
 
-        cb_p2 = ttk.Combobox(form, textvariable=self.v_paso2, values=self.catalogs.get(
-            "pasos", []), state="readonly")
-        row = self._add_row(
-            form, row, "PASO ESPIRAS – Paso 2 (mm) [opcional]", cb_p2)
+            row = self._add_row(
+                form,
+                row,
+                "PASO ESPIRAS – Paso 1 (mm)",
+                _paso_with_longitud(self.v_paso1, self.v_long_paso1),
+            )
 
-        cb_p3 = ttk.Combobox(form, textvariable=self.v_paso3, values=self.catalogs.get(
-            "pasos", []), state="readonly")
-        row = self._add_row(
-            form, row, "PASO ESPIRAS – Paso 3 (mm) [opcional]", cb_p3)
+            row = self._add_row(
+                form,
+                row,
+                "PASO ESPIRAS – Paso 2 (mm) [opcional]",
+                _paso_with_longitud(self.v_paso2, self.v_long_paso2),
+            )
 
-        self._on_eje_od_changed()
-        self._recalc_longitudes()
+            row = self._add_row(
+                form,
+                row,
+                "PASO ESPIRAS – Paso 3 (mm) [opcional]",
+                _paso_with_longitud(self.v_paso3, self.v_long_paso3),
+            )
 
-    def _build_camisa(self):
-        tipo = self.v_camisa_tipo.get()  # CIRCULAR / ARTESA
-        yesno = ["", "Sí", "No"]
+            self._on_eje_od_changed()
+            self._recalc_longitudes()
+
+        def _build_camisa(self):
+            tipo = self.v_camisa_tipo.get()  # CIRCULAR / ARTESA
+            yesno = ["", "Sí", "No"]
 
         def offer_btn(text: str):
             return ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(text))
 
-        if tipo == "CIRCULAR":
-            form = self._make_form("PARTE 002A – CAMISA TUBO Ø", cols=3)
+            if tipo == "CIRCULAR":
+                form = self._make_form("PARTE 002A – CAMISA TUBO Ø", cols=3)
+                row = 0
+
+                cb_dist = ttk.Combobox(
+                    form,
+                    textvariable=self.v_dist_testeros,
+                    values=self.catalogs.get("distancia_testeros", []),
+                    state="readonly",
+                )
+                row = self._add_row(
+                    form,
+                    row,
+                    "Distancia entre testeros (mm)",
+                    cb_dist,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002A: Distancia entre testeros")),
+                )
+
+                ent_tubo = ttk.Entry(form, textvariable=self.v_002A_tubo)
+                row = self._add_row(
+                    form,
+                    row,
+                    "002A.001  Tubo ø exterior / ø interior",
+                    ent_tubo,
+                    action_widget=ttk.Button(
+                        form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002A: Tubo")),
+                )
+
+                cb_testeros = ttk.Combobox(
+                    form,
+                    textvariable=self.v_002A_testeros,
+                    values=self.catalogs.get("espesores_chapa", []),
+                    state="readonly",
+                )
+                row = self._add_row(
+                    form,
+                    row,
+                    "002A.002  Testeros (espesor)",
+                    cb_testeros,
+                    action_widget=ttk.Button(
+                        form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002A: Testeros")),
+                )
+
+                cb_win = ttk.Combobox(
+                    form, textvariable=self.v_002A_ventana_inspeccion, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002A.003  Ventana inspección",
+                    cb_win,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002A: Ventana inspección")),
+                )
+
+                cb_suj = ttk.Combobox(
+                    form, textvariable=self.v_002A_suj_mangon_intermedio, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002A.004  Cjto. sujeción mangón intermedio",
+                    cb_suj,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002A: Sujeción mangón intermedio")),
+                )
+
+                cb_in = ttk.Combobox(
+                    form, textvariable=self.v_002A_boca_entrada, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002A.005  Boca entrada",
+                    cb_in,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002A: Boca entrada")),
+                )
+
+                cb_out = ttk.Combobox(
+                    form, textvariable=self.v_002A_boca_salida, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002A.006  Boca salida",
+                    cb_out,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002A: Boca salida")),
+                )
+
+            else:
+                form = self._make_form("PARTE 002B – CAMISA ARTESA", cols=3)
+                row = 0
+
+                cb_dist = ttk.Combobox(
+                    form,
+                    textvariable=self.v_dist_testeros,
+                    values=self.catalogs.get("distancia_testeros", []),
+                    state="readonly",
+                )
+                row = self._add_row(
+                    form,
+                    row,
+                    "Distancia entre testeros (mm)",
+                    cb_dist,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002B: Distancia entre testeros")),
+                )
+
+                cb_chapa = ttk.Combobox(
+                    form,
+                    textvariable=self.v_002B_chapa_artesa,
+                    values=self.catalogs.get("espesores_chapa", []),
+                    state="readonly",
+                )
+                row = self._add_row(
+                    form,
+                    row,
+                    "002B.001  Chapa artesa (espesor)",
+                    cb_chapa,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002B: Chapa artesa")),
+                )
+
+                cb_testeros = ttk.Combobox(
+                    orm,
+                    textvariable=self.v_002B_testeros,
+                    values=self.catalogs.get("espesores_chapa", []),
+                    state="readonly",
+                )
+                row = self._add_row(
+                    form,
+                    row,
+                    "002B.002  Testeros (espesor)",
+                    cb_testeros,
+                    action_widget=ttk.Button(
+                        form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002B: Testeros")),
+                )
+
+                cb_win = ttk.Combobox(
+                    form, textvariable=self.v_002B_ventana_inspeccion, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002B.003  Ventana inspección",
+                    cb_win,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002B: Ventana inspección")),
+                )
+
+                cb_suj = ttk.Combobox(
+                    form, textvariable=self.v_002B_suj_mangon_intermedio, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002B.004  Chapa sujeción mangón intermedio",
+                    cb_suj,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002B: Sujeción mangón intermedio")),
+                )
+
+                cb_in = ttk.Combobox(
+                    form, textvariable=self.v_002B_boca_entrada, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002B.005  Boca entrada",
+                    cb_in,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002B: Boca entrada")),
+                )
+
+                cb_out = ttk.Combobox(
+                    form, textvariable=self.v_002B_boca_salida, values=yesno, state="readonly")
+                row = self._add_row(
+                    form,
+                    row,
+                    "002B.006  Boca salida",
+                    cb_out,
+                    action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
+                        "Camisa 002B: Boca salida")),
+                )
+
+        def _build_conduccion(self):
+            form = self._make_form("PARTE 003 – CONDUCCIÓN")
             row = 0
 
-            cb_dist = ttk.Combobox(
+            # Disposición del motor (movida desde GENERAL)
+            cb_tipo = ttk.Combobox(
                 form,
-                textvariable=self.v_dist_testeros,
-                values=self.catalogs.get("distancia_testeros", []),
+                textvariable=self.v_tipo_dispos,
+                values=self.catalogs.get("tipo_disposicion", []),
                 state="readonly",
             )
             row = self._add_row(
-                form,
-                row,
-                "Distancia entre testeros (mm)",
-                cb_dist,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002A: Distancia entre testeros")),
-            )
+                form, row, "Disposición del motor (tipo)", cb_tipo)
 
-            ent_tubo = ttk.Entry(form, textvariable=self.v_002A_tubo)
+            self.cb_rod_conduccion = ttk.Combobox(
+                form, textvariable=self.v_rod_conduccion, values=[], state="readonly"
+            )
             row = self._add_row(
-                form,
-                row,
-                "002A.001  Tubo ø exterior / ø interior",
-                ent_tubo,
-                action_widget=ttk.Button(
-                    form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002A: Tubo")),
-            )
+                form, row, "Rodamiento (referencia)", self.cb_rod_conduccion)
 
-            cb_testeros = ttk.Combobox(
+            cb_pos = ttk.Combobox(
                 form,
-                textvariable=self.v_002A_testeros,
-                values=self.catalogs.get("espesores_chapa", []),
+                textvariable=self.v_pos_motor,
+                values=self.catalogs.get("posicion_motor", []),
                 state="readonly",
             )
             row = self._add_row(
-                form,
-                row,
-                "002A.002  Testeros (espesor)",
-                cb_testeros,
-                action_widget=ttk.Button(
-                    form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002A: Testeros")),
-            )
+                form, row, "Posición motorreductor-eje", cb_pos)
 
-            cb_win = ttk.Combobox(
-                form, textvariable=self.v_002A_ventana_inspeccion, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.003  Ventana inspección",
-                cb_win,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002A: Ventana inspección")),
-            )
-
-            cb_suj = ttk.Combobox(
-                form, textvariable=self.v_002A_suj_mangon_intermedio, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.004  Cjto. sujeción mangón intermedio",
-                cb_suj,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002A: Sujeción mangón intermedio")),
-            )
-
-            cb_in = ttk.Combobox(
-                form, textvariable=self.v_002A_boca_entrada, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.005  Boca entrada",
-                cb_in,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002A: Boca entrada")),
-            )
-
-            cb_out = ttk.Combobox(
-                form, textvariable=self.v_002A_boca_salida, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.006  Boca salida",
-                cb_out,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002A: Boca salida")),
-            )
-
-        else:
-            form = self._make_form("PARTE 002B – CAMISA ARTESA", cols=3)
-            row = 0
-
-            cb_dist = ttk.Combobox(
-                form,
-                textvariable=self.v_dist_testeros,
-                values=self.catalogs.get("distancia_testeros", []),
-                state="readonly",
-            )
-            row = self._add_row(
-                form,
-                row,
-                "Distancia entre testeros (mm)",
-                cb_dist,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002B: Distancia entre testeros")),
-            )
-
-            cb_chapa = ttk.Combobox(
-                form,
-                textvariable=self.v_002B_chapa_artesa,
-                values=self.catalogs.get("espesores_chapa", []),
-                state="readonly",
-            )
-            row = self._add_row(
-                form,
-                row,
-                "002B.001  Chapa artesa (espesor)",
-                cb_chapa,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002B: Chapa artesa")),
-            )
-
-            cb_testeros = ttk.Combobox(
-                form,
-                textvariable=self.v_002B_testeros,
-                values=self.catalogs.get("espesores_chapa", []),
-                state="readonly",
-            )
-            row = self._add_row(
-                form,
-                row,
-                "002B.002  Testeros (espesor)",
-                cb_testeros,
-                action_widget=ttk.Button(
-                    form, text="Pedir oferta", command=lambda: self._stub_offer("Camisa 002B: Testeros")),
-            )
-
-            cb_win = ttk.Combobox(
-                form, textvariable=self.v_002B_ventana_inspeccion, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002B.003  Ventana inspección",
-                cb_win,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002B: Ventana inspección")),
-            )
-
-            cb_suj = ttk.Combobox(
-                form, textvariable=self.v_002B_suj_mangon_intermedio, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002B.004  Chapa sujeción mangón intermedio",
-                cb_suj,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002B: Sujeción mangón intermedio")),
-            )
-
-            cb_in = ttk.Combobox(
-                form, textvariable=self.v_002B_boca_entrada, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002B.005  Boca entrada",
-                cb_in,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002B: Boca entrada")),
-            )
-
-            cb_out = ttk.Combobox(
-                form, textvariable=self.v_002B_boca_salida, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002B.006  Boca salida",
-                cb_out,
-                action_widget=ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(
-                    "Camisa 002B: Boca salida")),
-            )
-
-    def _build_conduccion(self):
-        form = self._make_form("PARTE 003 – CONDUCCIÓN")
-        row = 0
-
-        # Disposición del motor (movida desde GENERAL)
-        cb_tipo = ttk.Combobox(
-            form,
-            textvariable=self.v_tipo_dispos,
-            values=self.catalogs.get("tipo_disposicion", []),
-            state="readonly",
-        )
-        row = self._add_row(form, row, "Disposición del motor (tipo)", cb_tipo)
-
-        self.cb_rod_conduccion = ttk.Combobox(
-            form, textvariable=self.v_rod_conduccion, values=[], state="readonly"
-        )
-        row = self._add_row(
-            form, row, "Rodamiento (referencia)", self.cb_rod_conduccion)
-
-        cb_pos = ttk.Combobox(
-            form,
-            textvariable=self.v_pos_motor,
-            values=self.catalogs.get("posicion_motor", []),
-            state="readonly",
-        )
-        row = self._add_row(form, row, "Posición motorreductor-eje", cb_pos)
-
-        self._refresh_rodamientos()
+            self._refresh_rodamientos()
 
     def _build_conducido(self):
         form = self._make_form("PARTE 004 – CONDUCIDO")
@@ -1148,60 +1142,65 @@ class SinfinWindow(tk.Toplevel):
 
         self._refresh_rodamientos()
 
-    # ------------------ Events / Refresh ------------------
+        # ------------------ Events / Refresh ------------------
 
-    def _on_camisa_changed(self):
-        if self.v_section.get() == "Parte 002 – Camisa":
-            self._render_section()
 
-    def _on_eje_od_changed(self):
-        if not hasattr(self, "cb_eje_thk"):
-            return
+def _on_camisa_changed(self):
+    if self.v_section.get() == "Parte 002 – Camisa":
+        self._render_section()
 
-        hasattr(self, "cb_eje_thk")
-        od_raw = self.v_eje_od.get().strip()
-        espes = filter_espesores_por_od(self.catalogs, od_raw)
-        self.cb_eje_thk.configure(values=espes)
 
-        if self.v_eje_thk.get().strip() not in espes:
-            self.v_eje_thk.set(espes[0] if espes else "")
+def _on_eje_od_changed(self):
+    if not hasattr(self, "cb_eje_thk"):
+        return
 
+    hasattr(self, "cb_eje_thk")
+    od_raw = self.v_eje_od.get().strip()
+    espes = filter_espesores_por_od(self.catalogs, od_raw)
+    self.cb_eje_thk.configure(values=espes)
+
+    if self.v_eje_thk.get().strip() not in espes:
+        self.v_eje_thk.set(espes[0] if espes else "")
+
+    self._refresh_rodamientos()
+    self._auto_from_tubo()
+
+
+def _on_eje_thk_changed(self):
+    thk_raw = self.v_eje_thk.get().strip()
+    thk = _norm_num_text(thk_raw)
+    if thk_raw != thk:
+        self.v_eje_thk.set(thk)
         self._refresh_rodamientos()
         self._auto_from_tubo()
 
-    def _on_eje_thk_changed(self):
-        thk_raw = self.v_eje_thk.get().strip()
-        thk = _norm_num_text(thk_raw)
-        if thk_raw != thk:
-            self.v_eje_thk.set(thk)
 
-        self._refresh_rodamientos()
-        self._auto_from_tubo()
+def _refresh_rodamientos(self):
+    od = _norm_num_text(self.v_eje_od.get())
+    thk = _norm_num_text(self.v_eje_thk.get())
 
-    def _refresh_rodamientos(self):
-        od = _norm_num_text(self.v_eje_od.get())
-        thk = _norm_num_text(self.v_eje_thk.get())
+    vals: List[str] = filter_rodamientos_por_tubo(
+        self.catalogs, od, thk)
 
-        vals: List[str] = filter_rodamientos_por_tubo(self.catalogs, od, thk)
+    if hasattr(self, "cb_rod_conduccion"):
+        self.cb_rod_conduccion.configure(values=vals)
+    if self.v_rod_conduccion.get() and self.v_rod_conduccion.get() not in vals:
+        self.v_rod_conduccion.set("")
+    if hasattr(self, "cb_rod_conducido"):
+        self.cb_rod_conducido.configure(values=vals)
+    if self.v_rod_conducido.get() and self.v_rod_conducido.get() not in vals:
+        self.v_rod_conducido.set("")
 
-        if hasattr(self, "cb_rod_conduccion"):
-            self.cb_rod_conduccion.configure(values=vals)
-            if self.v_rod_conduccion.get() and self.v_rod_conduccion.get() not in vals:
-                self.v_rod_conduccion.set("")
-        if hasattr(self, "cb_rod_conducido"):
-            self.cb_rod_conducido.configure(values=vals)
-            if self.v_rod_conducido.get() and self.v_rod_conducido.get() not in vals:
-                self.v_rod_conducido.set("")
 
-    def _apply_pending_style(self):
-        """
-        Si está pendiente de medir, intentamos marcar la Longitud entre testeros en rojo.
-        (En algunos temas de Windows el foreground del Combobox no cambia; en ese caso al menos
-        queda indicado por la casilla y por el hint/calculo.)
-        """
-        if self.cb_long_test:
-            self.cb_long_test.configure(
-                style="Pending.TCombobox" if self.v_pendiente_medir.get() else "Normal.TCombobox")
+def _apply_pending_style(self):
+    """
+Si está pendiente de medir, intentamos marcar la Longitud entre testeros en rojo.
+(En algunos temas de Windows el foreground del Combobox no cambia; en ese caso al menos
+queda indicado por la casilla y por el hint/calculo.)
+"""
+    if self.cb_long_test:
+        self.cb_long_test.configure(
+            style="Pending.TCombobox" if self.v_pendiente_medir.get() else "Normal.TCombobox")
 
     def _recalc_longitudes(self):
         lt = _to_float_optional(self.v_long_test.get())
@@ -1220,16 +1219,18 @@ class SinfinWindow(tk.Toplevel):
             self.v_long_total_ext.set("")
             self.v_long_total_hint.set(
                 "Falta para calcular: " + " · ".join(missing))
-            if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
-                self.ent_long_total_ext.config(fg="#ff3b30", state="readonly")
+        if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
+            self.ent_long_total_ext.config(
+                fg="#ff3b30", state="readonly")
         else:
             total = float(lt) + float(lc) + float(ld)
             self.v_long_total_ext.set(f"{total:.0f}")
             self.v_long_total_hint.set("")
-            if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
-                self.ent_long_total_ext.config(fg="#000000", state="readonly")
+        if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
+            self.ent_long_total_ext.config(
+                fg="#000000", state="readonly")
 
-    # ------------------ Progress Tab (Treeview con Estado) ------------------
+        # ------------------ Progress Tab (Treeview con Estado) ------------------
 
     def _build_progress_tab(self):
         top = ttk.Frame(self.tab_prog)
@@ -1257,18 +1258,18 @@ class SinfinWindow(tk.Toplevel):
             self.tree_prog.heading(c, text=c)
             self.tree_prog.column(c, width=220 if c !=
                                   "Tarea" else 600, anchor="w")
+            self.tree_prog.pack(
+                fill="both", expand=True, padx=16, pady=(0, 16))
+            self.tree_prog.bind(
+                "<Double-1>", lambda _e: self._toggle_selected_task())
 
-        self.tree_prog.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-        self.tree_prog.bind(
-            "<Double-1>", lambda _e: self._toggle_selected_task())
+            ttk.Label(
+                self.tab_prog,
+                text="Doble click para alternar HECHO/PENDIENTE. Se guarda en la base de datos.",
+                foreground="#b0b0b0",
+            ).pack(anchor="w", padx=16, pady=(0, 12))
 
-        ttk.Label(
-            self.tab_prog,
-            text="Doble click para alternar HECHO/PENDIENTE. Se guarda en la base de datos.",
-            foreground="#b0b0b0",
-        ).pack(anchor="w", padx=16, pady=(0, 12))
-
-        self._tree_item_to_tarea_id = {}
+            self._tree_item_to_tarea_id = {}
 
     def _toggle_selected_task(self):
         sel = self.tree_prog.selection()
@@ -1278,7 +1279,6 @@ class SinfinWindow(tk.Toplevel):
         tarea_id = self._tree_item_to_tarea_id.get(item)
         if not tarea_id:
             return
-
         con = connect()
         try:
             cur = get_estado_tarea(con, self.sinfin_id, int(tarea_id))
@@ -1286,7 +1286,6 @@ class SinfinWindow(tk.Toplevel):
             set_estado_tarea(con, self.sinfin_id, int(tarea_id), newv)
         finally:
             con.close()
-
         self._load_progress()
 
     def _set_selected_task_state(self, completado: int):
@@ -1304,8 +1303,7 @@ class SinfinWindow(tk.Toplevel):
                              int(tarea_id), int(completado))
         finally:
             con.close()
-
-        self._load_progress()
+            self._load_progress()
 
     # ------------------ Load / Save ------------------
 
@@ -1373,12 +1371,11 @@ class SinfinWindow(tk.Toplevel):
             bool(d.get("mangones_intermedios", False)))
         self.v_num_mangones_intermedios.set(
             d.get("num_mangones_intermedios", ""))
-        self.v_diam_mangon_intermedio.set(d.get("diam_mangon_intermedio", ""))
 
         self.v_metrica_tornillos.set(
             d.get("metrica_tornillos", self.v_metrica_tornillos.get()))
-
-        self.v_diam_espira.set(d.get("diam_espira", self.v_diam_espira.get()))
+        self.v_diam_espira.set(
+            d.get("diam_espira", self.v_diam_espira.get()))
         self.v_espesor_espira.set(
             d.get("espesor_espira", self.v_espesor_espira.get()))
         self.v_paso1.set(d.get("paso1", self.v_paso1.get()))
@@ -1410,7 +1407,8 @@ class SinfinWindow(tk.Toplevel):
         # CONDUCCIÓN / CONDUCIDO
         self.v_rod_conduccion.set(d.get("rodamiento_conduccion", d.get(
             "rodamiento", self.v_rod_conduccion.get())))
-        self.v_pos_motor.set(d.get("posicion_motor", self.v_pos_motor.get()))
+        self.v_pos_motor.set(
+            d.get("posicion_motor", self.v_pos_motor.get()))
         self.v_rod_conducido.set(
             d.get("rodamiento_conducido", self.v_rod_conducido.get()))
 
@@ -1446,7 +1444,6 @@ class SinfinWindow(tk.Toplevel):
 
             "mangones_intermedios": bool(self.v_mangones_intermedios.get()),
             "num_mangones_intermedios": self.v_num_mangones_intermedios.get().strip(),
-            "diam_mangon_intermedio": self.v_diam_mangon_intermedio.get().strip(),
 
             "metrica_tornillos": self.v_metrica_tornillos.get().strip(),
 
@@ -1499,26 +1496,25 @@ class SinfinWindow(tk.Toplevel):
 
             self.tree_prog.delete(*self.tree_prog.get_children())
             self._tree_item_to_tarea_id = {}
-
             total = 0
             done = 0
 
             for p in procs:
                 proc_name = p.get("nombre", "")
-                for t in p.get("tareas", []):
-                    tarea_id = int(t["id"])
-                    tarea_name = str(t["nombre"])
+            for t in p.get("tareas", []):
+                tarea_id = int(t["id"])
+                tarea_name = str(t["nombre"])
 
-                    est = get_estado_tarea(con, self.sinfin_id, tarea_id)
-                    estado_txt = "HECHO" if int(est) == 1 else "PENDIENTE"
+                est = get_estado_tarea(con, self.sinfin_id, tarea_id)
+                estado_txt = "HECHO" if int(est) == 1 else "PENDIENTE"
 
-                    iid = self.tree_prog.insert("", "end", values=(
-                        proc_name, tarea_name, estado_txt))
-                    self._tree_item_to_tarea_id[iid] = tarea_id
+                iid = self.tree_prog.insert("", "end", values=(
+                    proc_name, tarea_name, estado_txt))
+                self._tree_item_to_tarea_id[iid] = tarea_id
 
-                    total += 1
-                    if int(est) == 1:
-                        done += 1
+                total += 1
+                if int(est) == 1:
+                    done += 1
 
             pct = (done / total * 100.0) if total else 0.0
             self.lbl_pct.configure(text=f"{pct:.1f}%")
@@ -1526,8 +1522,8 @@ class SinfinWindow(tk.Toplevel):
         finally:
             con.close()
 
-        if self.on_updated_callback:
-            try:
-                self.on_updated_callback()
-            except Exception:
-                pass
+    if self.on_updated_callback:
+        try:
+            self.on_updated_callback()
+        except Exception:
+            pass

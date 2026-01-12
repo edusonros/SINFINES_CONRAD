@@ -11,7 +11,6 @@ Estructura esperada en catalogos.json (mínimo):
   "distancia_testeros": [...],
   "rodamientos": [ {"ref":"22208","name":"SKF 22208 E","d":40,"D":80,"B":23}, ... ],
   "rodamiento_names": ["SKF 22208 E", ...]   # opcional, se puede derivar
-  "eje_dim": [...],
   "eje_od": [[...],
   "espesores_by_od": { "60,3": ["2","3"], ... },
   "metricas_tornillos": ["M8",...],
@@ -85,6 +84,30 @@ def tubo_id_mm(eje_od_mm_text: str, eje_thk_mm_text: str) -> Optional[float]:
     if od is None or thk is None:
         return None
     return od - 2.0 * thk
+
+
+def mecanizado_diff_mm(eje_od_mm_text: str, eje_thk_mm_text: str) -> Optional[float]:
+    """
+    Devuelve la diferencia OD-ID (mm) para validar el mecanizado.
+    La regla requiere 4 mm <= diferencia <= 6 mm.
+    """
+    od = _to_float(eje_od_mm_text)
+    thk = _to_float(eje_thk_mm_text)
+    if od is None or thk is None:
+        return None
+    id_mm = od - 2.0 * thk
+    return od - id_mm
+
+
+def is_mecanizado_ok(
+    eje_od_mm_text: str,
+    eje_thk_mm_text: str,
+    min_diff_mm: float = 4.0,
+    max_diff_mm: float = 6.0,
+) -> bool:
+    """Valida si la diferencia OD-ID está dentro del rango permitido."""
+    diff = mecanizado_diff_mm(eje_od_mm_text, eje_thk_mm_text)
+    return diff is not None and min_diff_mm <= diff <= max_diff_mm
 
 
 def filter_espesores_por_od(catalogs: Dict[str, Any], eje_od_mm_text: str) -> List[str]:

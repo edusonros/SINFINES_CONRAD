@@ -6,7 +6,6 @@ Entrada esperada (cabeceras, pueden variar levemente):
   Serie, Referencia, d_mm, D_mm.1, B_mm
 Ejemplo:
   22208, SKF 22208 E, 40, 80, 23
-
 - "Serie" se usa como ref (clave corta, p.ej. 22208)
 - "Referencia" se usa como name (lo que quieres ver en el desplegable: 'SKF 22208 E')
 """
@@ -49,12 +48,16 @@ def main():
 
         items = []
         for row in reader:
-            serie = (row.get("Serie") or row.get("serie") or row.get("SERIE") or "").strip()
-            name = (row.get("Referencia") or row.get("referencia") or row.get("REF") or "").strip()
+            serie = (row.get("Serie") or row.get("serie")
+                     or row.get("SERIE") or "").strip()
+            name = (row.get("Referencia") or row.get(
+                "referencia") or row.get("REF") or "").strip()
 
             # tolerar nombres alternativos de columnas
-            d = row.get("d_mm") or row.get("d") or row.get("d_mm ") or row.get("d_mm\t")
-            D = row.get("D_mm.1") or row.get("D_mm") or row.get("D") or row.get("D_mm ")
+            d = row.get("d_mm") or row.get("d") or row.get(
+                "d_mm ") or row.get("d_mm\t")
+            D = row.get("D_mm.1") or row.get(
+                "D_mm") or row.get("D") or row.get("D_mm ")
             B = row.get("B_mm") or row.get("B") or row.get("B_mm ")
 
             if not serie and not name:
@@ -76,7 +79,8 @@ def main():
 
     items.sort(key=key)
 
-    OUT_JSON.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    OUT_JSON.write_text(json.dumps(
+        items, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # CSV normalizado
     with OUT_CSV.open("w", encoding="utf-8", newline="") as f:
