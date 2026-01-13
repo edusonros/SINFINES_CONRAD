@@ -182,6 +182,12 @@ class SinfinWindow(tk.Toplevel):
         # Longitud total exterior calculada
         self.v_long_total_ext = tk.StringVar(value="")
         self.v_long_total_hint = tk.StringVar(value="")
+        
+                # Inclinación / Desplazamiento material (NUEVO)
+        self.v_angulo_inclinacion = tk.StringVar(value="0")  # grados
+        self.v_sentido_material = tk.StringVar(value="SUBIDA")  # SUBIDA / BAJADA
+        self.v_boca_entrada_general = tk.StringVar(value="ABAJO")  # ABAJO / ARRIBA
+        self.v_cant_bocas_entrada = tk.StringVar(value="1")  # lo dejo StringVar por consistencia con tu guardado
 
         self._obs_text: Optional[tk.Text] = None
 
@@ -459,7 +465,10 @@ class SinfinWindow(tk.Toplevel):
                 fg="#000000",
                 insertbackground="#000000",
             )
-            widget.grid(in_=wrap, row=0, column=0, sticky="we")
+            
+            widget.grid(in_=wrap, row=0, column=0, sticky="nsew")
+            wrap.grid_rowconfigure(0, weight=1)
+
         else:
             sticky = "we" if expand else "w"
             widget.grid(row=row, column=1, sticky=sticky, pady=6)
@@ -549,6 +558,18 @@ class SinfinWindow(tk.Toplevel):
         self.v_metrica_tornillos.set(f"M12x{bolt_len}")
 
     # ------------------ Section Builders ------------------
+    
+    def _sync_boca_entrada_from_sentido_material(self):
+        """
+        Si el material es de SUBIDA -> entrada ABAJO.
+        Si es de BAJADA -> entrada ARRIBA.
+        (El usuario podrá cambiarlo manualmente después si quiere.)
+        """
+        sm = (self.v_sentido_material.get() or "").strip().upper()
+        if sm == "SUBIDA":
+            self.v_boca_entrada_general.set("ABAJO")
+        elif sm == "BAJADA":
+            self.v_boca_entrada_general.set("ARRIBA")
 
     def _build_general(self):
         form = self._make_form("GENERAL")
@@ -650,6 +671,47 @@ class SinfinWindow(tk.Toplevel):
             form, textvariable=self.v_long_total_hint, foreground="#ff3b30")
         lbl_hint.grid(row=row, column=1, sticky="w", pady=(0, 8))
         row += 1
+        
+                # ---------------- NUEVO: Ángulo + sentido material + boca entrada + cantidad ----------------
+
+        # Ángulo de inclinación
+        ent_ang = ttk.Entry(form, textvariable=self.v_angulo_inclinacion, width=18)
+        row = self._add_row(form, row, "Ángulo de inclinación (°)", ent_ang, expand=False)
+
+        # Sentido desplazamiento material (SUBIDA / BAJADA)
+        row = self._add_row(form, row, "Sentido desplazamiento material", ttk.Frame(form))
+        for w in form.grid_slaves(row=row - 1, column=1):
+            w.destroy()
+        f_mat = ttk.Frame(form)
+        f_mat.grid(row=row - 1, column=1, sticky="w", pady=6)
+
+        ttk.Radiobutton(
+            f_mat, text="Material de subida", value="SUBIDA",
+            variable=self.v_sentido_material, command=self._sync_boca_entrada_from_sentido_material
+        ).pack(side="left", padx=(0, 14))
+
+        ttk.Radiobutton(
+            f_mat, text="Material de bajada", value="BAJADA",
+            variable=self.v_sentido_material, command=self._sync_boca_entrada_from_sentido_material
+        ).pack(side="left")
+
+        # Boca de entrada (ABAJO / ARRIBA)
+        row = self._add_row(form, row, "Boca de entrada", ttk.Frame(form))
+        for w in form.grid_slaves(row=row - 1, column=1):
+            w.destroy()
+        f_boca = ttk.Frame(form)
+        f_boca.grid(row=row - 1, column=1, sticky="w", pady=6)
+
+        ttk.Radiobutton(
+            f_boca, text="Abajo", value="ABAJO", variable=self.v_boca_entrada_general
+        ).pack(side="left", padx=(0, 14))
+        ttk.Radiobutton(
+            f_boca, text="Arriba", value="ARRIBA", variable=self.v_boca_entrada_general
+        ).pack(side="left")
+
+        # Cantidad de bocas de entrada
+        sp_bocas = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=self.v_cant_bocas_entrada)
+        row = self._add_row(form, row, "Cantidad bocas de entrada", sp_bocas, expand=False)
 
         # Observaciones (Text) - cuadro editable
         txt = tk.Text(form, height=4)
@@ -1176,21 +1238,17 @@ class SinfinWindow(tk.Toplevel):
 
         if missing:
             self.v_long_total_ext.set("")
-            self.v_long_total_hint.set(
-                "Falta para calcular: " + " · ".join(missing))
+            self.v_long_total_hint.set("Falta para calcular: " + " · ".join(missing))
             if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
-                self.ent_long_total_ext.config(
-                    fg="#ff3b30", state="readonly")
-            else:
-                total = float(lt) + float(lc) + float(ld)
-                self.v_long_total_ext.set(f"{total:.0f}")
-                self.v_long_total_hint.set("")
+                self.ent_long_total_ext.config(fg="#ff3b30", state="readonly")
+            return
+
+        total = float(lt) + float(lc) + float(ld)
+        self.v_long_total_ext.set(f"{total:.0f}")
+        self.v_long_total_hint.set("")
 
         if self.ent_long_total_ext and self.ent_long_total_ext.winfo_exists():
-            self.ent_long_total_ext.config(
-                fg="#000000", state="readonly")
-
-        # ------------------ Progress Tab (Treeview con Estado) ------------------
+            self.ent_long_total_ext.config(fg="#000000", state="readonly")
 
     def _build_progress_tab(self):
         top = ttk.Frame(self.tab_prog)
@@ -1309,6 +1367,13 @@ class SinfinWindow(tk.Toplevel):
             d.get("longitud_entre_testeros", d.get("long_test", ""))))
         self.v_pendiente_medir.set(
             bool(d.get("pendiente_medir_cliente", False)))
+                # NUEVO: inclinación / material
+        self.v_angulo_inclinacion.set(str(d.get("angulo_inclinacion_deg", d.get("angulo_inclinacion", "0"))))
+        self.v_sentido_material.set(str(d.get("sentido_material", "SUBIDA")).upper())
+        self.v_boca_entrada_general.set(str(d.get("boca_entrada_general", d.get("boca_entrada", "ABAJO"))).upper())
+        self.v_cant_bocas_entrada.set(str(d.get("cantidad_bocas_entrada", "1")))
+        self._sync_boca_entrada_from_sentido_material()
+
         self._pending_obs = d.get("observaciones", "")
 
         # Disposición motor (Parte 003)
@@ -1389,6 +1454,11 @@ class SinfinWindow(tk.Toplevel):
             "longitud_entre_testeros": self.v_long_test.get().strip(),
             "pendiente_medir_cliente": bool(self.v_pendiente_medir.get()),
             "observaciones": self._get_observaciones(),
+            # NUEVO: inclinación / material
+            "angulo_inclinacion_deg": self.v_angulo_inclinacion.get().strip(),
+            "sentido_material": self.v_sentido_material.get().strip(),
+            "boca_entrada_general": self.v_boca_entrada_general.get().strip(),
+            "cantidad_bocas_entrada": self.v_cant_bocas_entrada.get().strip(),
 
             # Disposición motor (Parte 003)
             "tipo_disposicion": self.v_tipo_dispos.get().strip(),
