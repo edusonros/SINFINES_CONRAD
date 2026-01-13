@@ -237,6 +237,26 @@ class SinfinWindow(tk.Toplevel):
         self.v_002A_suj_mangon_intermedio = tk.StringVar()
         self.v_002A_boca_entrada = tk.StringVar()
         self.v_002A_boca_salida = tk.StringVar()
+        self.v_002A_camisa_od = tk.StringVar()
+        self.v_002A_camisa_id = tk.StringVar()
+        self.v_002A_camisa_thk = tk.StringVar()  # por si lo quieres luego
+        self.v_diam_espira.trace_add("write", lambda *_: self._auto_camisa_tubo_002A())
+        self.v_002A_vi_lleva = tk.StringVar(value="")   # "" / "Sí" / "No"
+        self.v_002A_vi_ref = tk.StringVar(value="")     # readonly
+        self.v_002A_vi_cant = tk.StringVar(value="1")
+        self.v_002A_vi_offset = tk.StringVar(value="")  # distancia centro-ventana al testero del mangón conductor
+        self.v_002A_camisa_od.trace_add("write", lambda *_: self._auto_ref_ventana_inspeccion_002A())
+        self.v_002A_vi_lleva.trace_add("write", lambda *_: self._auto_ref_ventana_inspeccion_002A())
+        self.v_002A_cjto_lleva = tk.BooleanVar(value=False)
+        self.v_002A_cjto_ref = tk.StringVar(value="")
+        self.v_002A_cjto_cant = tk.StringVar(value="1")
+        self.v_002A_camisa_od.trace_add("write", lambda *_: self._auto_ref_cjto_intermedio_002A())
+        self.v_mangones_intermedios.trace_add("write", lambda *_: self._auto_ref_cjto_intermedio_002A())
+        self.v_mangon_conduccion.trace_add("write", lambda *_: self._auto_ref_cjto_intermedio_002A())  # si usas ese diámetro para intermedio
+        self.v_diam_espira.trace_add("write", lambda *_: self._auto_camisa_tubo_002A())
+        # Si tienes camisa_od:
+        self.v_002A_camisa_od.trace_add("write", lambda *_: self._auto_ref_ventana_inspeccion_002A())
+
 
         # 002B
         self.v_002B_chapa_artesa = tk.StringVar()
@@ -293,6 +313,12 @@ class SinfinWindow(tk.Toplevel):
             "Espesor_Espira_01": self.v_espesor_espira.get().strip(),
             "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
             "espesor_chapa": self.v_espesor_espira.get().strip(),
+                    # --- GEOMETRÍA / FUNCIONAMIENTO ---
+            "angulo_inclinacion_deg": self.v_angulo_inclinacion.get().strip(),
+            "sentido_material": self.v_sentido_material.get().strip(),
+            "boca_entrada_general": self.v_boca_entrada_general.get().strip(),
+            "cantidad_bocas_entrada": self.v_cant_bocas_entrada.get().strip(),
+
             # opcional
             "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
             "espesor_testero": self.v_002A_testeros.get().strip()
@@ -409,6 +435,8 @@ class SinfinWindow(tk.Toplevel):
             lambda _e=None: self._canvas.configure(scrollregion=self._canvas.bbox("all")),
         )
 
+        self._auto_camisa_tubo_002A()
+        self._auto_ref_ventana_inspeccion_002A()
         self._render_section()
 
 
@@ -556,6 +584,120 @@ class SinfinWindow(tk.Toplevel):
 
         bolt_len = self._ceil_to_5(id_mm + 25.0)
         self.v_metrica_tornillos.set(f"M12x{bolt_len}")
+
+    def _parse_tube_item(self, item):
+        """
+        Acepta formatos típicos en catálogos:
+          - "114.3x3.6"
+          - "114.3 x 3.6"
+          - {"od":114.3, "thk":3.6}
+        Devuelve (od, thk) o None.
+        """
+        if isinstance(item, dict):
+            od = item.get("od") or item.get("OD") or item.get("diametro_exterior")
+            thk = item.get("thk") or item.get("THK") or item.get("espesor")
+            try:
+                return float(str(od).replace(",", ".")), float(str(thk).replace(",", "."))
+            except Exception:
+                return None
+
+        s = str(item).strip().lower().replace(" ", "").replace("ø", "")
+        if "x" in s:
+            a, b = s.split("x", 1)
+            try:
+                return float(a.replace(",", ".")), float(b.replace(",", "."))
+            except Exception:
+                return None
+        return None
+
+    def _auto_camisa_tubo_002A(self):
+        """
+        Camisa tubo (002A):
+        ID_min = Ø_espira + 8 mm  (holgura 4 mm por lado)
+        Elegimos el tubo cuyo ID sea >= ID_min con el menor exceso.
+        Catálogo usado: catalogs["eje_od"] y catalogs["espesores_by_od"]
+        """
+        de = _to_float_optional(self.v_diam_espira.get())
+        if de is None:
+            self.v_002A_tubo.set("")  # por compatibilidad si lo sigues usando
+            if hasattr(self, "v_002A_camisa_od"):
+                self.v_002A_camisa_od.set("")
+                self.v_002A_camisa_id.set("")
+                self.v_002A_camisa_thk.set("")
+            return
+
+        id_min = float(de) + 8.0
+
+        eje_od = self.catalogs.get("eje_od", [])
+        espes_by = self.catalogs.get("espesores_by_od", {})
+
+        best = None  # (exceso, id, od, thk)
+        fallback = None  # el de mayor ID por si ninguno cumple
+
+        for od_s in eje_od:
+            try:
+                od = float(str(od_s).replace(",", "."))
+            except Exception:
+                continue
+
+            espesores = espes_by.get(str(od_s), espes_by.get(str(int(od)) if od.is_integer() else str(od), []))
+            for thk_s in espesores:
+                try:
+                    thk = float(str(thk_s).replace(",", "."))
+                except Exception:
+                    continue
+
+                tube_id = od - 2.0 * thk
+
+                # guardar fallback como el mayor ID
+                if fallback is None or tube_id > fallback[0]:
+                    fallback = (tube_id, od, thk)
+
+                if tube_id >= id_min:
+                    exceso = tube_id - id_min
+                    cand = (exceso, tube_id, od, thk)
+                    if best is None or cand[0] < best[0]:
+                        best = cand
+
+        if best is None and fallback is None:
+            return  # no hay catálogo
+
+        if best is None:
+            tube_id, od, thk = fallback
+        else:
+            _, tube_id, od, thk = best
+
+        # Guarda en vars NUEVAS (si existen)
+        if hasattr(self, "v_002A_camisa_od"):
+            self.v_002A_camisa_od.set(f"{od:.1f}")
+            self.v_002A_camisa_id.set(f"{tube_id:.1f}")
+            self.v_002A_camisa_thk.set(f"{thk:.1f}")
+
+        # Si sigues usando v_002A_tubo (formato "OD / ID")
+        self.v_002A_tubo.set(f"{od:.1f} / {tube_id:.1f}")
+
+    def _auto_ref_ventana_inspeccion_002A(self):
+        """
+        Si lleva ventana, propone una referencia en función de Ø camisa (OD).
+        Placeholder por rangos.
+        """
+        lleva = (self.v_002A_vi_lleva.get() or "").strip()
+        od = _to_float_optional(self.v_002A_camisa_od.get()) if hasattr(self, "v_002A_camisa_od") else None
+
+        if lleva != "Sí" or od is None:
+            self.v_002A_vi_ref.set("")
+            return
+
+        if od <= 150:
+            ref = "VI-150"
+        elif od <= 250:
+            ref = "VI-250"
+        elif od <= 400:
+            ref = "VI-400"
+        else:
+            ref = "VI-500"
+
+        self.v_002A_vi_ref.set(ref)
 
     # ------------------ Section Builders ------------------
     
@@ -981,14 +1123,35 @@ class SinfinWindow(tk.Toplevel):
                 action_widget=offer_btn("Camisa 002A: Distancia entre testeros"),
             )
 
-            ent_tubo = ttk.Entry(form, textvariable=self.v_002A_tubo)
+            def camisa_cols() -> ttk.Frame:
+                f = ttk.Frame(form)
+                ent_od = tk.Entry(
+                    f, textvariable=self.v_002A_camisa_od,
+                    bg="#ffffff", fg="#000000", insertbackground="#000000",
+                    relief="flat", width=10
+                )
+                ent_od.config(state="readonly")
+                ent_od.grid(row=0, column=0, padx=(0, 8))
+
+                ent_id = tk.Entry(
+                    f, textvariable=self.v_002A_camisa_id,
+                    bg="#ffffff", fg="#000000", insertbackground="#000000",
+                    relief="flat", width=10
+                )
+                ent_id.config(state="readonly")
+                ent_id.grid(row=0, column=1)
+
+                ttk.Label(f, text="(Øext / Øint)").grid(row=0, column=2, padx=(8, 0))
+                return f
+
             row = self._add_row(
-                form,
-                row,
-                "002A.001  Tubo ø exterior / ø interior",
-                ent_tubo,
+                form, row,
+                "002A.001  Tubo camisa (Ø exterior / Ø interior) [auto]",
+                camisa_cols(),
                 action_widget=offer_btn("Camisa 002A: Tubo"),
+                expand=False,
             )
+
 
             cb_testeros = ttk.Combobox(
                 form,
@@ -1004,23 +1167,41 @@ class SinfinWindow(tk.Toplevel):
                 action_widget=offer_btn("Camisa 002A: Testeros"),
             )
 
-            cb_win = ttk.Combobox(form, textvariable=self.v_002A_ventana_inspeccion, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.003  Ventana inspección",
-                cb_win,
-                action_widget=offer_btn("Camisa 002A: Ventana inspección"),
-            )
+            cb_vi = ttk.Combobox(form, textvariable=self.v_002A_vi_lleva, values=yesno, state="readonly")
+            row = self._add_row(form, row, "002A.003  Ventana inspección (lleva)", cb_vi, action_widget=offer_btn("Camisa 002A: Ventana inspección"))
 
-            cb_suj = ttk.Combobox(form, textvariable=self.v_002A_suj_mangon_intermedio, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.004  Cjto. sujeción mangón intermedio",
-                cb_suj,
-                action_widget=offer_btn("Camisa 002A: Sujeción mangón intermedio"),
+            # Referencia auto (readonly)
+            ent_vi_ref = tk.Entry(
+                form, textvariable=self.v_002A_vi_ref,
+                bg="#ffffff", fg="#000000", insertbackground="#000000", relief="flat", width=18
             )
+            ent_vi_ref.config(state="readonly")
+            row = self._add_row(form, row, "002A.003a  Ref. ventana (auto)", ent_vi_ref, expand=False)
+
+            # Cantidad
+            sp_vi = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=self.v_002A_vi_cant)
+            row = self._add_row(form, row, "002A.003b  Cantidad ventanas", sp_vi, expand=False)
+
+            # Offset
+            ent_off = ttk.Entry(form, textvariable=self.v_002A_vi_offset, width=18)
+            row = self._add_row(form, row, "002A.003c  Dist. centro ventana a testero (mm)", ent_off, expand=False)
+
+            self._auto_ref_ventana_inspeccion_002A()
+
+
+            # 002A.004 Cjto sujeción mangón intermedio (AUTO por Parte 001)
+            ent_cj = tk.Entry(
+                form, textvariable=self.v_002A_cjto_ref,
+                bg="#ffffff", fg="#000000", insertbackground="#000000", relief="flat", width=18
+            )
+            ent_cj.config(state="readonly")
+            row = self._add_row(form, row, "002A.004  Cjto. sujeción mangón intermedio (auto)", ent_cj, expand=False)
+
+            sp_cj = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=self.v_002A_cjto_cant)
+            row = self._add_row(form, row, "002A.004a Cantidad cjtos", sp_cj, expand=False)
+
+            self._auto_ref_cjto_intermedio_002A()
+
 
             cb_in = ttk.Combobox(form, textvariable=self.v_002A_boca_entrada, values=yesno, state="readonly")
             row = self._add_row(
@@ -1039,6 +1220,10 @@ class SinfinWindow(tk.Toplevel):
                 cb_out,
                 action_widget=offer_btn("Camisa 002A: Boca salida"),
             )
+            
+            self._auto_camisa_tubo_002A()
+            self._auto_ref_ventana_inspeccion_002A()
+
 
         else:
             form = self._make_form("PARTE 002B – CAMISA ARTESA", cols=3)
@@ -1324,6 +1509,50 @@ class SinfinWindow(tk.Toplevel):
             con.close()
 
         self._load_progress()
+
+    def _auto_ref_cjto_intermedio_002A(self):
+        """
+        Solo si hay mangones intermedios, propone referencia de conjunto de sujeción
+        en función de Ø camisa y Ø mangón intermedio (aquí uso v_mangon_conduccion como base; si tienes otra var, cámbiala).
+        """
+        if not self.v_mangones_intermedios.get():
+            self.v_002A_cjto_lleva.set(False)
+            self.v_002A_cjto_ref.set("")
+            return
+
+        od_camisa = _to_float_optional(self.v_002A_camisa_od.get())
+        dm = _to_float_optional(self.v_mangon_conduccion.get())  # cambia si tienes var específica
+        if od_camisa is None or dm is None:
+            self.v_002A_cjto_lleva.set(True)
+            self.v_002A_cjto_ref.set("CJTO-INTERMEDIO (pendiente datos)")
+            return
+
+        self.v_002A_cjto_lleva.set(True)
+        self.v_002A_cjto_ref.set(f"CJTO-OD{od_camisa:.0f}-DM{dm:.0f}")
+
+    def _auto_ref_ventana_inspeccion_002A(self):
+        """
+        Si lleva ventana, propone una referencia en función de Ø camisa.
+        Aquí pongo una lógica placeholder (tablas por rangos).
+        """
+        lleva = (self.v_002A_vi_lleva.get() or "").strip()
+        od = _to_float_optional(self.v_002A_camisa_od.get())
+        if lleva != "Sí" or od is None:
+            self.v_002A_vi_ref.set("")
+            return
+
+        # ejemplo por rangos (AJUSTABLE)
+        if od <= 150:
+            ref = "VI-150"
+        elif od <= 250:
+            ref = "VI-250"
+        elif od <= 400:
+            ref = "VI-400"
+        else:
+            ref = "VI-500"
+
+        self.v_002A_vi_ref.set(ref)
+
 
     # ------------------ Load / Save ------------------
 
