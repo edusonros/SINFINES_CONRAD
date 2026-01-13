@@ -318,6 +318,7 @@ class SinfinWindow(tk.Toplevel):
         # traces
         self.v_long_test.trace_add(
             "write", lambda *_: self._recalc_longitudes())
+        self.v_long_test.trace_add("write", lambda *_: self._recalc_longitudes())
         self.v_mangon_ext_conduccion.trace_add(
             "write", lambda *_: self._recalc_longitudes())
         self.v_mangon_ext_conducido.trace_add(
@@ -1239,10 +1240,11 @@ class SinfinWindow(tk.Toplevel):
 
             cb_dist = ttk.Combobox(
                 form,
-                textvariable=self.v_dist_testeros,
+                textvariable=self.v_long_test,  # <-- MISMA variable que en GENERAL
                 values=self.catalogs.get("distancia_testeros", []),
                 state="readonly",
             )
+
             row = self._add_row(
                 form,
                 row,
@@ -1344,10 +1346,11 @@ class SinfinWindow(tk.Toplevel):
 
             cb_dist = ttk.Combobox(
                 form,
-                textvariable=self.v_dist_testeros,
+                textvariable=self.v_long_test,  # <-- MISMA variable que en GENERAL
                 values=self.catalogs.get("distancia_testeros", []),
                 state="readonly",
             )
+
             row = self._add_row(
                 form,
                 row,
@@ -1404,7 +1407,6 @@ class SinfinWindow(tk.Toplevel):
 
             row = self._build_boca_block(form, row, prefix="in", title="002B.005  Boca entrada")
             row = self._build_boca_block(form, row, prefix="out", title="002B.006  Boca salida")
-
 
     def _build_conduccion(self):
         form = self._make_form("PARTE 003 – CONDUCCIÓN")
