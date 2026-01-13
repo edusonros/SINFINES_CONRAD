@@ -1,11 +1,18 @@
 {
   "global": {
-    "Dist_Testeros": "2300",
-    "Paso_Espira_01": "175",
-    "DiametroExterior": "60.3",
-    "ø_Int_Espira_01": "60.3",
-    "ø_Ext_Espira_01": "175",
-    "espesor_espira_01": "4",
-    "espesor_testero": "5"
+    "longitud_entre_testeros": "4150",
+    "paso_espira": "150",
+    "diametro_tubo": "76.1",
+    "espesor_tubo": "2.6",
+    "diametro_espira": "150",
+    "Largo": "4150",
+    "Paso_Espira_01": "150",
+    "ø_Int_Espira_01": "76.1",
+    "DiametroExterior": "76.1",
+    "ø_Tubo_Interior": "71.1",
+    "Espesor_Espira_01": "6",
+    "ø_Ext_Espira_01": "150",
+    "espesor_chapa": "6",
+    "espesor_testero": "4"
   }
 }
