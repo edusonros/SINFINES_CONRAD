@@ -33,7 +33,6 @@ def _to_float_required(x) -> float:
     s = str(x).strip().replace(",", ".")
     return float(s)
 
-
 def _to_float_optional(x) -> Optional[float]:
     s = str(x).strip().replace(",", ".")
     if not s:
@@ -43,10 +42,8 @@ def _to_float_optional(x) -> Optional[float]:
     except Exception:
         return None
 
-
 def _norm_num_text(s: str) -> str:
     return str(s).strip().replace(",", ".")
-
 
 def _set_dark_style(root: tk.Misc) -> None:
     """
@@ -136,7 +133,6 @@ def _set_dark_style(root: tk.Misc) -> None:
         foreground=[("selected", "#ffffff")],
     )
 
-
 def _safe_float_text(x: Any) -> str:
     if x is None:
         return ""
@@ -144,7 +140,6 @@ def _safe_float_text(x: Any) -> str:
     if not s:
         return ""
     return s
-
 
 # ------------------ Main Window ------------------
 
@@ -270,24 +265,22 @@ class SinfinWindow(tk.Toplevel):
         # Usamos diccionario para no duplicar código: "in" = entrada, "out" = salida
         def _boca_defaults():
             return {
-                "lleva": tk.StringVar(value="No"),          # Sí / No
-                "cant": tk.StringVar(value="1"),            # cantidad
-                "altura": tk.StringVar(value=""),           # mm (cuello)
-                "angulo": tk.StringVar(value="0"),          # grados
-                "tipo": tk.StringVar(value="CIRCULAR"),     # CIRCULAR / RECTO
+                "lleva": tk.StringVar(value="Sí"),         # <- antes "No"
+                "cant": tk.StringVar(value="1"),           # <- ya lo tienes, lo dejamos
 
-                # CIRCULAR
-                "diam_arranque": tk.StringVar(value=""),    # mm
-                "diam_final": tk.StringVar(value=""),       # mm
+                "altura": tk.StringVar(value=""),
+                "angulo": tk.StringVar(value="0"),
+                "tipo": tk.StringVar(value="CIRCULAR"),
 
-                # RECTO
-                "arranque_ancho": tk.StringVar(value=""),   # mm
-                "arranque_alto": tk.StringVar(value=""),    # mm
-                "final_ancho": tk.StringVar(value=""),      # mm
-                "final_alto": tk.StringVar(value=""),       # mm
+                "diam_arranque": tk.StringVar(value=""),
+                "diam_final": tk.StringVar(value=""),
 
-                # opcional
-                "offset_testero": tk.StringVar(value=""),   # mm
+                "arranque_ancho": tk.StringVar(value=""),
+                "arranque_alto": tk.StringVar(value=""),
+                "final_ancho": tk.StringVar(value=""),
+                "final_alto": tk.StringVar(value=""),
+
+                "offset_testero": tk.StringVar(value=""),
             }
 
         self.bocas = {
@@ -915,7 +908,7 @@ class SinfinWindow(tk.Toplevel):
         ).pack(side="left")
 
         # Cantidad de bocas de entrada
-        sp_bocas = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=self.v_cant_bocas_entrada)
+        sp_bocas = ttk.Spinbox(form, from_=0, to=9, width=18, textvariable=self.v_cant_bocas_entrada)
         row = self._add_row(form, row, "Cantidad bocas de entrada", sp_bocas, expand=False)
 
         # Observaciones (Text) - cuadro editable
@@ -1162,11 +1155,13 @@ class SinfinWindow(tk.Toplevel):
         self._recalc_longitudes()
 
     def _build_boca_block(self, form: ttk.Frame, row: int, *, prefix: str, title: str) -> int:
+
         """
         Construye el bloque UI de una boca (entrada/salida).
         prefix: "in" o "out"
         title: texto del bloque (ej: "002A.005 Boca entrada")
         """
+                
         b = self.bocas[prefix]
         yesno = ["Sí", "No"]
 
@@ -1865,8 +1860,8 @@ class SinfinWindow(tk.Toplevel):
             "rodamiento_conducido": self.v_rod_conducido.get().strip(),
             
                         # ---------------- BOCAS (entrada / salida) ----------------
-            "boca_in_lleva": self.bocas["in"]["lleva"].get().strip(),
-            "boca_in_cant": self.bocas["in"]["cant"].get().strip(),
+            "boca_in_lleva": self.bocas["in"]["lleva"].set(d.get("boca_in_lleva") or "Sí"),
+            "boca_in_cant": self.bocas["in"]["cant"].set(d.get("boca_in_cant") or "1"),
             "boca_in_altura": self.bocas["in"]["altura"].get().strip(),
             "boca_in_angulo": self.bocas["in"]["angulo"].get().strip(),
             "boca_in_tipo": self.bocas["in"]["tipo"].get().strip(),
@@ -1878,8 +1873,8 @@ class SinfinWindow(tk.Toplevel):
             "boca_in_final_alto": self.bocas["in"]["final_alto"].get().strip(),
             "boca_in_offset_testero": self.bocas["in"]["offset_testero"].get().strip(),
 
-            "boca_out_lleva": self.bocas["out"]["lleva"].get().strip(),
-            "boca_out_cant": self.bocas["out"]["cant"].get().strip(),
+            "boca_out_lleva": self.bocas["out"]["lleva"].set(d.get("boca_out_lleva") or "Sí"),
+            "boca_out_cant": self.bocas["out"]["cant"].set(d.get("boca_out_cant") or "1"),
             "boca_out_altura": self.bocas["out"]["altura"].get().strip(),
             "boca_out_angulo": self.bocas["out"]["angulo"].get().strip(),
             "boca_out_tipo": self.bocas["out"]["tipo"].get().strip(),
