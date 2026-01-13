@@ -223,9 +223,9 @@ class SinfinWindow(tk.Toplevel):
         # Espiras/pasos
         self.v_diam_espira = tk.StringVar()
         self.v_espesor_espira = tk.StringVar()
-        self.v_paso1 = tk.StringVar()
-        self.v_paso2 = tk.StringVar()
-        self.v_paso3 = tk.StringVar()
+        self.v_long_paso1 = tk.StringVar()
+        self.v_long_paso2 = tk.StringVar()
+        self.v_long_paso3 = tk.StringVar()
 
         # PARTE 002 – CAMISA (ahora con filas de “subconjuntos”)
         self.v_dist_testeros = tk.StringVar()
@@ -502,7 +502,6 @@ class SinfinWindow(tk.Toplevel):
         self._auto_camisa_tubo_002A()
         self._auto_ref_ventana_inspeccion_002A()
         self._render_section()
-
 
     def _clear_right(self):
         for w in self.right.winfo_children():
