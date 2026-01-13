@@ -265,6 +265,41 @@ class SinfinWindow(tk.Toplevel):
         self.v_002B_suj_mangon_intermedio = tk.StringVar()
         self.v_002B_boca_entrada = tk.StringVar()
         self.v_002B_boca_salida = tk.StringVar()
+        
+                # ---------------- BOCA ENTRADA / SALIDA (NUEVO) ----------------
+        # Usamos diccionario para no duplicar código: "in" = entrada, "out" = salida
+        def _boca_defaults():
+            return {
+                "lleva": tk.StringVar(value="No"),          # Sí / No
+                "cant": tk.StringVar(value="1"),            # cantidad
+                "altura": tk.StringVar(value=""),           # mm (cuello)
+                "angulo": tk.StringVar(value="0"),          # grados
+                "tipo": tk.StringVar(value="CIRCULAR"),     # CIRCULAR / RECTO
+
+                # CIRCULAR
+                "diam_arranque": tk.StringVar(value=""),    # mm
+                "diam_final": tk.StringVar(value=""),       # mm
+
+                # RECTO
+                "arranque_ancho": tk.StringVar(value=""),   # mm
+                "arranque_alto": tk.StringVar(value=""),    # mm
+                "final_ancho": tk.StringVar(value=""),      # mm
+                "final_alto": tk.StringVar(value=""),       # mm
+
+                # opcional
+                "offset_testero": tk.StringVar(value=""),   # mm
+            }
+
+        self.bocas = {
+            "in": _boca_defaults(),
+            "out": _boca_defaults(),
+        }
+
+        # Re-render automático si cambias "lleva" o "tipo" (solo cuando estás en Camisa)
+        for k in ("in", "out"):
+            self.bocas[k]["lleva"].trace_add("write", lambda *_: self._rerender_if_camisa())
+            self.bocas[k]["tipo"].trace_add("write", lambda *_: self._rerender_if_camisa())
+
 
         # PARTE 003 – CONDUCCIÓN
         self.v_rod_conduccion = tk.StringVar()
@@ -318,12 +353,40 @@ class SinfinWindow(tk.Toplevel):
             "sentido_material": self.v_sentido_material.get().strip(),
             "boca_entrada_general": self.v_boca_entrada_general.get().strip(),
             "cantidad_bocas_entrada": self.v_cant_bocas_entrada.get().strip(),
+            
+                        # --------- BOCAS (entrada / salida) ---------
+            "boca_in_lleva": self.bocas["in"]["lleva"].get().strip(),
+            "boca_in_cant": self.bocas["in"]["cant"].get().strip(),
+            "boca_in_altura": self.bocas["in"]["altura"].get().strip(),
+            "boca_in_angulo": self.bocas["in"]["angulo"].get().strip(),
+            "boca_in_tipo": self.bocas["in"]["tipo"].get().strip(),
+            "boca_in_diam_arranque": self.bocas["in"]["diam_arranque"].get().strip(),
+            "boca_in_diam_final": self.bocas["in"]["diam_final"].get().strip(),
+            "boca_in_arranque_ancho": self.bocas["in"]["arranque_ancho"].get().strip(),
+            "boca_in_arranque_alto": self.bocas["in"]["arranque_alto"].get().strip(),
+            "boca_in_final_ancho": self.bocas["in"]["final_ancho"].get().strip(),
+            "boca_in_final_alto": self.bocas["in"]["final_alto"].get().strip(),
+            "boca_in_offset_testero": self.bocas["in"]["offset_testero"].get().strip(),
+
+            "boca_out_lleva": self.bocas["out"]["lleva"].get().strip(),
+            "boca_out_cant": self.bocas["out"]["cant"].get().strip(),
+            "boca_out_altura": self.bocas["out"]["altura"].get().strip(),
+            "boca_out_angulo": self.bocas["out"]["angulo"].get().strip(),
+            "boca_out_tipo": self.bocas["out"]["tipo"].get().strip(),
+            "boca_out_diam_arranque": self.bocas["out"]["diam_arranque"].get().strip(),
+            "boca_out_diam_final": self.bocas["out"]["diam_final"].get().strip(),
+            "boca_out_arranque_ancho": self.bocas["out"]["arranque_ancho"].get().strip(),
+            "boca_out_arranque_alto": self.bocas["out"]["arranque_alto"].get().strip(),
+            "boca_out_final_ancho": self.bocas["out"]["final_ancho"].get().strip(),
+            "boca_out_final_alto": self.bocas["out"]["final_alto"].get().strip(),
+            "boca_out_offset_testero": self.bocas["out"]["offset_testero"].get().strip(),
+
 
             # opcional
             "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
             "espesor_testero": self.v_002A_testeros.get().strip()
             or self.v_002B_testeros.get().strip()
-            or "10",
+            or "10",            
         }
 
         # Validación rápida
@@ -1098,6 +1161,71 @@ class SinfinWindow(tk.Toplevel):
         self._on_eje_od_changed()
         self._recalc_longitudes()
 
+    def _build_boca_block(self, form: ttk.Frame, row: int, *, prefix: str, title: str) -> int:
+        """
+        Construye el bloque UI de una boca (entrada/salida).
+        prefix: "in" o "out"
+        title: texto del bloque (ej: "002A.005 Boca entrada")
+        """
+        b = self.bocas[prefix]
+        yesno = ["Sí", "No"]
+
+        # Separador visual
+        sep = ttk.Separator(form, orient="horizontal")
+        sep.grid(row=row, column=0, columnspan=3, sticky="we", pady=(12, 10))
+        row += 1
+
+        ttk.Label(form, text=title, font=("Segoe UI", 10, "bold")).grid(
+            row=row, column=0, sticky="w", pady=(0, 6)
+        )
+        row += 1
+
+        # Lleva
+        cb_lleva = ttk.Combobox(form, textvariable=b["lleva"], values=yesno, state="readonly", width=18)
+        row = self._add_row(form, row, "Lleva boca", cb_lleva, expand=False)
+
+        if b["lleva"].get() != "Sí":
+            return row  # si no lleva, no mostramos más
+
+        # Campos comunes
+        sp_cant = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=b["cant"])
+        row = self._add_row(form, row, "Cantidad", sp_cant, expand=False)
+
+        ent_alt = ttk.Entry(form, textvariable=b["altura"], width=18)
+        row = self._add_row(form, row, "Altura cuello (mm)", ent_alt, expand=False)
+
+        ent_ang = ttk.Entry(form, textvariable=b["angulo"], width=18)
+        row = self._add_row(form, row, "Ángulo (°) respecto horizontal", ent_ang, expand=False)
+
+        cb_tipo = ttk.Combobox(form, textvariable=b["tipo"], values=["CIRCULAR", "RECTO"], state="readonly", width=18)
+        row = self._add_row(form, row, "Tipo", cb_tipo, expand=False)
+
+        ent_off = ttk.Entry(form, textvariable=b["offset_testero"], width=18)
+        row = self._add_row(form, row, "Dist. centro boca a testero (mm) [opcional]", ent_off, expand=False)
+
+        # Campos según tipo
+        if b["tipo"].get() == "CIRCULAR":
+            ent_da = ttk.Entry(form, textvariable=b["diam_arranque"], width=18)
+            row = self._add_row(form, row, "Circular: Ø arranque (mm)", ent_da, expand=False)
+
+            ent_df = ttk.Entry(form, textvariable=b["diam_final"], width=18)
+            row = self._add_row(form, row, "Circular: Ø final (mm)", ent_df, expand=False)
+
+        else:  # RECTO
+            ent_aa = ttk.Entry(form, textvariable=b["arranque_ancho"], width=18)
+            row = self._add_row(form, row, "Recto: arranque ancho (mm)", ent_aa, expand=False)
+
+            ent_ah = ttk.Entry(form, textvariable=b["arranque_alto"], width=18)
+            row = self._add_row(form, row, "Recto: arranque alto (mm)", ent_ah, expand=False)
+
+            ent_fa = ttk.Entry(form, textvariable=b["final_ancho"], width=18)
+            row = self._add_row(form, row, "Recto: final ancho (mm)", ent_fa, expand=False)
+
+            ent_fh = ttk.Entry(form, textvariable=b["final_alto"], width=18)
+            row = self._add_row(form, row, "Recto: final alto (mm)", ent_fh, expand=False)
+
+        return row
+
     def _build_camisa(self):
         tipo = self.v_camisa_tipo.get()  # CIRCULAR / ARTESA
         yesno = ["", "Sí", "No"]
@@ -1152,7 +1280,6 @@ class SinfinWindow(tk.Toplevel):
                 expand=False,
             )
 
-
             cb_testeros = ttk.Combobox(
                 form,
                 textvariable=self.v_002A_testeros,
@@ -1188,7 +1315,6 @@ class SinfinWindow(tk.Toplevel):
 
             self._auto_ref_ventana_inspeccion_002A()
 
-
             # 002A.004 Cjto sujeción mangón intermedio (AUTO por Parte 001)
             ent_cj = tk.Entry(
                 form, textvariable=self.v_002A_cjto_ref,
@@ -1202,27 +1328,11 @@ class SinfinWindow(tk.Toplevel):
 
             self._auto_ref_cjto_intermedio_002A()
 
-
-            cb_in = ttk.Combobox(form, textvariable=self.v_002A_boca_entrada, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.005  Boca entrada",
-                cb_in,
-                action_widget=offer_btn("Camisa 002A: Boca entrada"),
-            )
-
-            cb_out = ttk.Combobox(form, textvariable=self.v_002A_boca_salida, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002A.006  Boca salida",
-                cb_out,
-                action_widget=offer_btn("Camisa 002A: Boca salida"),
-            )
-            
             self._auto_camisa_tubo_002A()
             self._auto_ref_ventana_inspeccion_002A()
+            # --- BLOQUES NUEVOS: Boca entrada y Boca salida ---
+            row = self._build_boca_block(form, row, prefix="in", title="002A.005  Boca entrada")
+            row = self._build_boca_block(form, row, prefix="out", title="002A.006  Boca salida")
 
 
         else:
@@ -1292,23 +1402,9 @@ class SinfinWindow(tk.Toplevel):
                 action_widget=offer_btn("Camisa 002B: Sujeción mangón intermedio"),
             )
 
-            cb_in = ttk.Combobox(form, textvariable=self.v_002B_boca_entrada, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002B.005  Boca entrada",
-                cb_in,
-                action_widget=offer_btn("Camisa 002B: Boca entrada"),
-            )
+            row = self._build_boca_block(form, row, prefix="in", title="002B.005  Boca entrada")
+            row = self._build_boca_block(form, row, prefix="out", title="002B.006  Boca salida")
 
-            cb_out = ttk.Combobox(form, textvariable=self.v_002B_boca_salida, values=yesno, state="readonly")
-            row = self._add_row(
-                form,
-                row,
-                "002B.006  Boca salida",
-                cb_out,
-                action_widget=offer_btn("Camisa 002B: Boca salida"),
-            )
 
     def _build_conduccion(self):
         form = self._make_form("PARTE 003 – CONDUCCIÓN")
@@ -1357,6 +1453,11 @@ class SinfinWindow(tk.Toplevel):
 
     def _on_camisa_changed(self):
         if self.v_section.get() == "Parte 002 – Camisa":
+            self._render_section()
+
+    def _rerender_if_camisa(self):
+        # Solo re-renderiza si estás viendo Camisa (evita parpadeos en otras pantallas)
+        if getattr(self, "v_section", None) and self.v_section.get() == "Parte 002 – Camisa":
             self._render_section()
 
     def _on_eje_od_changed(self):
@@ -1673,6 +1774,27 @@ class SinfinWindow(tk.Toplevel):
         self._recalc_longitudes()
         self._apply_pending_style()
         self._render_section()
+        
+                # ---------------- BOCAS (entrada / salida) ----------------
+        def _load_boca(prefix: str, key: str, default: str = ""):
+            self.bocas[prefix][key].set(str(d.get(f"boca_{prefix}_{key}", default)))
+
+        for p in ("in", "out"):
+            _load_boca(p, "lleva", "No")
+            _load_boca(p, "cant", "1")
+            _load_boca(p, "altura", "")
+            _load_boca(p, "angulo", "0")
+            _load_boca(p, "tipo", "CIRCULAR")
+
+            _load_boca(p, "diam_arranque", "")
+            _load_boca(p, "diam_final", "")
+
+            _load_boca(p, "arranque_ancho", "")
+            _load_boca(p, "arranque_alto", "")
+            _load_boca(p, "final_ancho", "")
+            _load_boca(p, "final_alto", "")
+
+            _load_boca(p, "offset_testero", "")
 
     def _save_definition(self):
         data = {
@@ -1735,6 +1857,34 @@ class SinfinWindow(tk.Toplevel):
             "rodamiento_conduccion": self.v_rod_conduccion.get().strip(),
             "posicion_motor": self.v_pos_motor.get().strip(),
             "rodamiento_conducido": self.v_rod_conducido.get().strip(),
+            
+                        # ---------------- BOCAS (entrada / salida) ----------------
+            "boca_in_lleva": self.bocas["in"]["lleva"].get().strip(),
+            "boca_in_cant": self.bocas["in"]["cant"].get().strip(),
+            "boca_in_altura": self.bocas["in"]["altura"].get().strip(),
+            "boca_in_angulo": self.bocas["in"]["angulo"].get().strip(),
+            "boca_in_tipo": self.bocas["in"]["tipo"].get().strip(),
+            "boca_in_diam_arranque": self.bocas["in"]["diam_arranque"].get().strip(),
+            "boca_in_diam_final": self.bocas["in"]["diam_final"].get().strip(),
+            "boca_in_arranque_ancho": self.bocas["in"]["arranque_ancho"].get().strip(),
+            "boca_in_arranque_alto": self.bocas["in"]["arranque_alto"].get().strip(),
+            "boca_in_final_ancho": self.bocas["in"]["final_ancho"].get().strip(),
+            "boca_in_final_alto": self.bocas["in"]["final_alto"].get().strip(),
+            "boca_in_offset_testero": self.bocas["in"]["offset_testero"].get().strip(),
+
+            "boca_out_lleva": self.bocas["out"]["lleva"].get().strip(),
+            "boca_out_cant": self.bocas["out"]["cant"].get().strip(),
+            "boca_out_altura": self.bocas["out"]["altura"].get().strip(),
+            "boca_out_angulo": self.bocas["out"]["angulo"].get().strip(),
+            "boca_out_tipo": self.bocas["out"]["tipo"].get().strip(),
+            "boca_out_diam_arranque": self.bocas["out"]["diam_arranque"].get().strip(),
+            "boca_out_diam_final": self.bocas["out"]["diam_final"].get().strip(),
+            "boca_out_arranque_ancho": self.bocas["out"]["arranque_ancho"].get().strip(),
+            "boca_out_arranque_alto": self.bocas["out"]["arranque_alto"].get().strip(),
+            "boca_out_final_ancho": self.bocas["out"]["final_ancho"].get().strip(),
+            "boca_out_final_alto": self.bocas["out"]["final_alto"].get().strip(),
+            "boca_out_offset_testero": self.bocas["out"]["offset_testero"].get().strip(),
+
         }
 
         con = connect()
