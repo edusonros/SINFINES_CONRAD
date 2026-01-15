@@ -29,6 +29,10 @@ from exporter.inventor_export import export_params_to_json
 
 # ------------------ UI Helpers ------------------
 
+def _to_float_required(x) -> float:
+    s = str(x).strip().replace(",", ".")
+    return float(s)
+
 def _to_float_optional(x) -> Optional[float]:
     s = str(x).strip().replace(",", ".")
     if not s:
@@ -136,19 +140,6 @@ def _safe_float_text(x: Any) -> str:
     if not s:
         return ""
     return s
-
-def _add_section_title(self, form: ttk.Frame, row: int, title: str) -> int:
-    """Inserta separador + título en negrita y devuelve el nuevo row."""
-    sep = ttk.Separator(form, orient="horizontal")
-    sep.grid(row=row, column=0, columnspan=3, sticky="we", pady=(12, 10))
-    row += 1
-
-    ttk.Label(form, text=title, font=("Segoe UI", 10, "bold")).grid(
-        row=row, column=0, sticky="w", pady=(0, 6)
-    )
-    row += 1
-    return row
-
 
 # ------------------ Main Window ------------------
 
@@ -275,7 +266,7 @@ class SinfinWindow(tk.Toplevel):
         def _boca_defaults():
             return {
                 "lleva": tk.StringVar(value="Sí"),         # <- antes "No"
-                "cant": tk.StringVar(value=""),           # <- ya lo tienes, lo dejamos
+                "cant": tk.StringVar(value="1"),           # <- ya lo tienes, lo dejamos
 
                 "altura": tk.StringVar(value=""),
                 "angulo": tk.StringVar(value="0"),
@@ -335,16 +326,14 @@ class SinfinWindow(tk.Toplevel):
     def _get_definicion_completa(self) -> dict:
         """
         Devuelve un dict con todos los parámetros necesarios para exportar a Inventor.
-        Rellena defaults si faltan (especialmente bocas) y solo valida lo imprescindible.
+        (Si falta alguno, lanzamos error con messagebox)
         """
-
         d = {
             "longitud_entre_testeros": self.v_long_test.get().strip(),
             "paso_espira": self.v_paso1.get().strip(),
             "diametro_tubo": self.v_eje_od.get().strip(),
             "espesor_tubo": self.v_eje_thk.get().strip(),
             "diametro_espira": self.v_diam_espira.get().strip(),
-
             "Largo": self.v_long_test.get().strip(),
             "Paso_Espira_01": self.v_paso1.get().strip(),
             "ø_Int_Espira_01": self.v_eje_od.get().strip(),
@@ -353,14 +342,13 @@ class SinfinWindow(tk.Toplevel):
             "Espesor_Espira_01": self.v_espesor_espira.get().strip(),
             "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
             "espesor_chapa": self.v_espesor_espira.get().strip(),
-
-            # --- GEOMETRÍA / FUNCIONAMIENTO ---
+                    # --- GEOMETRÍA / FUNCIONAMIENTO ---
             "angulo_inclinacion_deg": self.v_angulo_inclinacion.get().strip(),
             "sentido_material": self.v_sentido_material.get().strip(),
             "boca_entrada_general": self.v_boca_entrada_general.get().strip(),
             "cantidad_bocas_entrada": self.v_cant_bocas_entrada.get().strip(),
-
-            # --------- BOCAS (entrada / salida) ---------
+            
+                        # --------- BOCAS (entrada / salida) ---------
             "boca_in_lleva": self.bocas["in"]["lleva"].get().strip(),
             "boca_in_cant": self.bocas["in"]["cant"].get().strip(),
             "boca_in_altura": self.bocas["in"]["altura"].get().strip(),
@@ -387,78 +375,21 @@ class SinfinWindow(tk.Toplevel):
             "boca_out_final_alto": self.bocas["out"]["final_alto"].get().strip(),
             "boca_out_offset_testero": self.bocas["out"]["offset_testero"].get().strip(),
 
-            # opcional (DEJA SOLO UNA VEZ)
-            "espesor_testero": (
-                self.v_002A_testeros.get().strip()
-                or self.v_002B_testeros.get().strip()
-                or "10"
-            ),
+
+            # opcional
+            "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
+            "espesor_testero": self.v_002A_testeros.get().strip()
+            or self.v_002B_testeros.get().strip()
+            or "10",            
         }
 
-        # ---------------- Normalización de BOCAS (no bloquear si faltan) ----------------
-        def _norm_num(x: str, default: str = "0") -> str:
-            x = (x or "").strip()
-            return x if x != "" else default
-
-        def _norm_text(x: str, default: str = "") -> str:
-            x = (x or "").strip()
-            return x if x != "" else default
-
-        for p in ("in", "out"):
-            lleva = _norm_text(d.get(f"boca_{p}_lleva"), "No")
-            tipo = _norm_text(d.get(f"boca_{p}_tipo"), "CIRCULAR")
-
-            d[f"boca_{p}_lleva"] = lleva
-            d[f"boca_{p}_tipo"] = tipo
-            d[f"boca_{p}_cant"] = _norm_num(d.get(f"boca_{p}_cant"), "1")
-            d[f"boca_{p}_angulo"] = _norm_num(d.get(f"boca_{p}_angulo"), "0")
-            d[f"boca_{p}_altura"] = _norm_num(d.get(f"boca_{p}_altura"), "0")
-            d[f"boca_{p}_offset_testero"] = _norm_num(d.get(f"boca_{p}_offset_testero"), "0")
-
-            # Si NO lleva boca => todo lo específico a "0"
-            if lleva != "Sí":
-                d[f"boca_{p}_diam_arranque"] = "0"
-                d[f"boca_{p}_diam_final"] = "0"
-                d[f"boca_{p}_arranque_ancho"] = "0"
-                d[f"boca_{p}_arranque_alto"] = "0"
-                d[f"boca_{p}_final_ancho"] = "0"
-                d[f"boca_{p}_final_alto"] = "0"
-                continue
-
-            # Si lleva: valida por tipo y rellena defaults
-            if tipo == "CIRCULAR":
-                d[f"boca_{p}_diam_arranque"] = _norm_num(d.get(f"boca_{p}_diam_arranque"), "0")
-                d[f"boca_{p}_diam_final"] = _norm_num(d.get(f"boca_{p}_diam_final"), "0")
-
-                d[f"boca_{p}_arranque_ancho"] = "0"
-                d[f"boca_{p}_arranque_alto"] = "0"
-                d[f"boca_{p}_final_ancho"] = "0"
-                d[f"boca_{p}_final_alto"] = "0"
-            else:  # RECTO
-                d[f"boca_{p}_arranque_ancho"] = _norm_num(d.get(f"boca_{p}_arranque_ancho"), "0")
-                d[f"boca_{p}_arranque_alto"] = _norm_num(d.get(f"boca_{p}_arranque_alto"), "0")
-                d[f"boca_{p}_final_ancho"] = _norm_num(d.get(f"boca_{p}_final_ancho"), "0")
-                d[f"boca_{p}_final_alto"] = _norm_num(d.get(f"boca_{p}_final_alto"), "0")
-
-                d[f"boca_{p}_diam_arranque"] = "0"
-                d[f"boca_{p}_diam_final"] = "0"
-
-        # ---------------- Validación: SOLO lo imprescindible ----------------
-        obligatorios = [
-            "longitud_entre_testeros",
-            "paso_espira",
-            "diametro_tubo",
-            "espesor_tubo",
-            "diametro_espira",
-            "espesor_testero",
-        ]
-
-        faltan = [k for k in obligatorios if not str(d.get(k, "")).strip()]
+        # Validación rápida
+        faltan = [k for k, v in d.items() if not str(v).strip()]
         if faltan:
-            raise ValueError("Faltan datos para generar planos: " + ", ".join(faltan))
+            raise ValueError(
+                "Faltan datos para generar planos: " + ", ".join(faltan))
 
         return d
-
 
     def _on_generar_planos(self):
         try:
@@ -824,36 +755,6 @@ class SinfinWindow(tk.Toplevel):
 
         self.v_002A_vi_ref.set(ref)
 
-    def _cantidad_combobox(self, parent, textvariable):
-        cb = ttk.Combobox(
-            parent,
-            textvariable=textvariable,
-            values=[str(i) for i in range(1, 11)],
-            state="normal",
-            width=18,
-        )
-
-        # Validación: solo números >= 1
-        def _validate(P):
-            return P == "" or (P.isdigit() and int(P) >= 1)
-
-        vcmd = (parent.register(_validate), "%P")
-        cb.configure(validate="key", validatecommand=vcmd)
-
-        return cb
-
-    def _add_section_title(self, form: ttk.Frame, row: int, title: str) -> int:
-        """Inserta separador + título en negrita y devuelve el nuevo row."""
-        sep = ttk.Separator(form, orient="horizontal")
-        sep.grid(row=row, column=0, columnspan=3, sticky="we", pady=(12, 10))
-        row += 1
-
-        ttk.Label(form, text=title, font=("Segoe UI", 10, "bold")).grid(
-            row=row, column=0, sticky="w", pady=(0, 6)
-        )
-        row += 1
-        return row
-
     # ------------------ Section Builders ------------------
     
     def _sync_boca_entrada_from_sentido_material(self):
@@ -1006,16 +907,9 @@ class SinfinWindow(tk.Toplevel):
             f_boca, text="Arriba", value="ARRIBA", variable=self.v_boca_entrada_general
         ).pack(side="left")
 
-        # Cantidad de bocas de entrada (editable)
-        cb_bocas = ttk.Combobox(
-            form,
-            textvariable=self.v_cant_bocas_entrada,
-            values=[str(i) for i in range(0, 10)],  # 0..9
-            state="normal",                         # <- CLAVE: permite escribir
-            width=18,
-        )
-        row = self._add_row(form, row, "Cantidad bocas de entrada", cb_bocas, expand=False)
-
+        # Cantidad de bocas de entrada
+        sp_bocas = ttk.Spinbox(form, from_=0, to=9, width=18, textvariable=self.v_cant_bocas_entrada)
+        row = self._add_row(form, row, "Cantidad bocas de entrada", sp_bocas, expand=False)
 
         # Observaciones (Text) - cuadro editable
         txt = tk.Text(form, height=4)
@@ -1289,14 +1183,21 @@ class SinfinWindow(tk.Toplevel):
             return row  # si no lleva, no mostramos más
 
         # Campos comunes
-
-        cb_cant = self._cantidad_combobox(form, b["cant"])
-        row = self._add_row(form, row, "Cantidad", cb_cant, expand=False)
+        sp_cant = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=b["cant"])
+        row = self._add_row(form, row, "Cantidad", sp_cant, expand=False)
 
         ent_alt = ttk.Entry(form, textvariable=b["altura"], width=18)
         row = self._add_row(form, row, "Altura cuello (mm)", ent_alt, expand=False)
 
-        
+        ent_ang = ttk.Entry(form, textvariable=b["angulo"], width=18)
+        row = self._add_row(form, row, "Ángulo (°) respecto horizontal", ent_ang, expand=False)
+
+        cb_tipo = ttk.Combobox(form, textvariable=b["tipo"], values=["CIRCULAR", "RECTO"], state="readonly", width=18)
+        row = self._add_row(form, row, "Tipo", cb_tipo, expand=False)
+
+        ent_off = ttk.Entry(form, textvariable=b["offset_testero"], width=18)
+        row = self._add_row(form, row, "Dist. centro boca a testero (mm) [opcional]", ent_off, expand=False)
+
         # Campos según tipo
         if b["tipo"].get() == "CIRCULAR":
             ent_da = ttk.Entry(form, textvariable=b["diam_arranque"], width=18)
@@ -1321,62 +1222,38 @@ class SinfinWindow(tk.Toplevel):
         return row
 
     def _build_camisa(self):
-        tipo = self.v_camisa_tipo.get()  # "CIRCULAR" / "ARTESA"
+        tipo = self.v_camisa_tipo.get()  # CIRCULAR / ARTESA
         yesno = ["", "Sí", "No"]
-
-        # --- Defaults / normalización (punto 1) ---
-        # Ventana inspección: usa la variable que realmente estás pintando en UI
-        if hasattr(self, "v_002A_vi_lleva"):
-            if not self.v_002A_vi_lleva.get().strip():
-                self.v_002A_vi_lleva.set("No")
-        else:
-            # por compatibilidad si aún existe la antigua
-            if hasattr(self, "v_002A_ventana_inspeccion") and not self.v_002A_ventana_inspeccion.get().strip():
-                self.v_002A_ventana_inspeccion.set("No")
-
-        if hasattr(self, "v_002B_ventana_inspeccion") and not self.v_002B_ventana_inspeccion.get().strip():
+                # --- Defaults / normalización (punto 1) ---
+        if not self.v_002A_ventana_inspeccion.get().strip():
+            self.v_002A_ventana_inspeccion.set("No")
+        if not self.v_002B_ventana_inspeccion.get().strip():
             self.v_002B_ventana_inspeccion.set("No")
-
-        # ============================================================
-        #   FORM ÚNICO (sin repetir Distancia entre testeros)
-        # ============================================================
-        form = self._make_form("PARTE 002 – CAMISA", cols=3)
-        row = 0
-
-        def offer_btn(text: str):
-            return ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(text))
-
-        # Distancia entre testeros (una sola vez)
-        cb_dist = ttk.Combobox(
-            form,
-            textvariable=self.v_long_test,  # MISMA variable que en GENERAL
-            values=self.catalogs.get("distancia_testeros", []),
-            state="readonly",
-        )
-        row = self._add_row(
-            form,
-            row,
-            "Distancia entre testeros (mm)",
-            cb_dist,
-            action_widget=offer_btn("Camisa: Distancia entre testeros"),
-        )
-
-        # ============================================================
-        #   002A – CAMISA TUBO Ø
-        #   Nueva numeración:
-        #   002A.001 Tubo
-        #   002A.002 Testeros
-        #   002A.003 Ventana inspección
-        #   002A.004 Boca entrada
-        #   002A.005 Boca salida
-        #   002A.006 Mangones intermedios
-        # ============================================================
+        
         if tipo == "CIRCULAR":
-            row = self._add_section_title(form, row, "PARTE 002A – CAMISA TUBO Ø")
+            form = self._make_form("PARTE 002A – CAMISA TUBO Ø", cols=3)
+            row = 0
+
+            def offer_btn(text: str):
+                return ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(text))
+
+            cb_dist = ttk.Combobox(
+                form,
+                textvariable=self.v_long_test,  # <-- MISMA variable que en GENERAL
+                values=self.catalogs.get("distancia_testeros", []),
+                state="readonly",
+            )
+
+            row = self._add_row(
+                form,
+                row,
+                "Distancia entre testeros (mm)",
+                cb_dist,
+                action_widget=offer_btn("Camisa 002A: Distancia entre testeros"),
+            )
 
             def camisa_cols() -> ttk.Frame:
                 f = ttk.Frame(form)
-
                 ent_od = tk.Entry(
                     f, textvariable=self.v_002A_camisa_od,
                     bg="#ffffff", fg="#000000", insertbackground="#000000",
@@ -1396,8 +1273,6 @@ class SinfinWindow(tk.Toplevel):
                 ttk.Label(f, text="(Øext / Øint)").grid(row=0, column=2, padx=(8, 0))
                 return f
 
-            # --- 002A.001 TUBO CAMISA ---
-            row = self._add_section_title(form, row, "002A.001  Tubo camisa")
             row = self._add_row(
                 form, row,
                 "002A.001  Tubo camisa (Ø exterior / Ø interior) [auto]",
@@ -1406,33 +1281,24 @@ class SinfinWindow(tk.Toplevel):
                 expand=False,
             )
 
-            # --- 002A.002 TESTEROS ---
             cb_testeros = ttk.Combobox(
                 form,
                 textvariable=self.v_002A_testeros,
                 values=self.catalogs.get("espesores_chapa", []),
                 state="readonly",
             )
-            row = self._add_section_title(form, row, "002A.002  Testeros: Conformación")
             row = self._add_row(
-                form, row,
+                form,
+                row,
                 "002A.002  Testeros (espesor)",
                 cb_testeros,
                 action_widget=offer_btn("Camisa 002A: Testeros"),
             )
 
-            # --- 002A.003 VENTANA INSPECCIÓN ---
-            row = self._add_section_title(form, row, "002A.003  Ventana de inspección")
+            cb_vi = ttk.Combobox(form, textvariable=self.v_002A_vi_lleva, values=yesno, state="readonly")
+            row = self._add_row(form, row, "002A.003  Ventana inspección (lleva)", cb_vi, action_widget=offer_btn("Camisa 002A: Ventana inspección"))
 
-            # OJO: aquí usas v_002A_vi_lleva (nuevo)
-            cb_vi_lleva = ttk.Combobox(form, textvariable=self.v_002A_vi_lleva, values=yesno, state="normal")
-            row = self._add_row(
-                form, row,
-                "002A.003  Ventana inspección (lleva)",
-                cb_vi_lleva,
-                action_widget=offer_btn("Camisa 002A: Ventana inspección")
-            )
-
+            # Referencia auto (readonly)
             ent_vi_ref = tk.Entry(
                 form, textvariable=self.v_002A_vi_ref,
                 bg="#ffffff", fg="#000000", insertbackground="#000000", relief="flat", width=18
@@ -1440,51 +1306,58 @@ class SinfinWindow(tk.Toplevel):
             ent_vi_ref.config(state="readonly")
             row = self._add_row(form, row, "002A.003a  Ref. ventana (auto)", ent_vi_ref, expand=False)
 
-            cb_vi_cant = self._cantidad_combobox(form, self.v_002A_vi_cant)
-            row = self._add_row(form, row, "002A.003b  Cantidad ventanas", cb_vi_cant, expand=False)
+            # Cantidad
+            sp_vi = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=self.v_002A_vi_cant)
+            row = self._add_row(form, row, "002A.003b  Cantidad ventanas", sp_vi, expand=False)
 
+            # Offset
             ent_off = ttk.Entry(form, textvariable=self.v_002A_vi_offset, width=18)
             row = self._add_row(form, row, "002A.003c  Dist. centro ventana a testero (mm)", ent_off, expand=False)
 
-            # --- 002A.004 BOCA ENTRADA ---
-            row = self._build_boca_block(form, row, prefix="in", title="002A.004  Boca entrada")
+            self._auto_ref_ventana_inspeccion_002A()
 
-            # --- 002A.005 BOCA SALIDA ---
-            row = self._build_boca_block(form, row, prefix="out", title="002A.005  Boca salida")
-
-            # --- 002A.006 MANGONES INTERMEDIOS ---
-            row = self._add_section_title(form, row, "002A.006  Mangones intermedios")
-
+            # 002A.004 Cjto sujeción mangón intermedio (AUTO por Parte 001)
             ent_cj = tk.Entry(
                 form, textvariable=self.v_002A_cjto_ref,
                 bg="#ffffff", fg="#000000", insertbackground="#000000", relief="flat", width=18
             )
             ent_cj.config(state="readonly")
-            row = self._add_row(form, row, "002A.006  Cjto. sujeción mangón intermedio (auto)", ent_cj, expand=False)
+            row = self._add_row(form, row, "002A.004  Cjto. sujeción mangón intermedio (auto)", ent_cj, expand=False)
 
-            cb_cj = self._cantidad_combobox(form, self.v_002A_cjto_cant)
-            row = self._add_row(form, row, "002A.006a Cantidad cjtos", cb_cj, expand=False)
+            sp_cj = ttk.Spinbox(form, from_=1, to=10, width=18, textvariable=self.v_002A_cjto_cant)
+            row = self._add_row(form, row, "002A.004a Cantidad cjtos", sp_cj, expand=False)
 
-            # Autos (una sola vez cada uno)
-            self._auto_camisa_tubo_002A()
-            self._auto_ref_ventana_inspeccion_002A()
             self._auto_ref_cjto_intermedio_002A()
 
-        # ============================================================
-        #   002B – CAMISA ARTESA
-        #   Nueva numeración:
-        #   002B.001 Chapa artesa
-        #   002B.002 Testeros
-        #   002B.003 Ventana inspección
-        #   002B.004 Boca entrada
-        #   002B.005 Boca salida
-        #   002B.006 Mangones intermedios (chapa sujeción)
-        # ============================================================
-        else:
-            row = self._add_section_title(form, row, "PARTE 002B – CAMISA ARTESA")
+            self._auto_camisa_tubo_002A()
+            self._auto_ref_ventana_inspeccion_002A()
+            # --- BLOQUES NUEVOS: Boca entrada y Boca salida ---
+            row = self._build_boca_block(form, row, prefix="in", title="002A.005  Boca entrada")
+            row = self._build_boca_block(form, row, prefix="out", title="002A.006  Boca salida")
 
-            # --- 002B.001 CHAPA ARTESA ---
-            row = self._add_section_title(form, row, "002B.001  Chapa artesa")
+
+        else:
+            form = self._make_form("PARTE 002B – CAMISA ARTESA", cols=3)
+            row = 0
+
+            def offer_btn(text: str):
+                return ttk.Button(form, text="Pedir oferta", command=lambda: self._stub_offer(text))
+
+            cb_dist = ttk.Combobox(
+                form,
+                textvariable=self.v_long_test,  # <-- MISMA variable que en GENERAL
+                values=self.catalogs.get("distancia_testeros", []),
+                state="readonly",
+            )
+
+            row = self._add_row(
+                form,
+                row,
+                "Distancia entre testeros (mm)",
+                cb_dist,
+                action_widget=offer_btn("Camisa 002B: Distancia entre testeros"),
+            )
+
             cb_chapa = ttk.Combobox(
                 form,
                 textvariable=self.v_002B_chapa_artesa,
@@ -1492,52 +1365,47 @@ class SinfinWindow(tk.Toplevel):
                 state="readonly",
             )
             row = self._add_row(
-                form, row,
+                form,
+                row,
                 "002B.001  Chapa artesa (espesor)",
                 cb_chapa,
                 action_widget=offer_btn("Camisa 002B: Chapa artesa"),
             )
 
-            # --- 002B.002 TESTEROS ---
-            row = self._add_section_title(form, row, "002B.002  Testeros: Conformación")
             cb_testeros = ttk.Combobox(
-                form,
+                form,  # <- OJO: era "orm" en tu código
                 textvariable=self.v_002B_testeros,
                 values=self.catalogs.get("espesores_chapa", []),
                 state="readonly",
             )
             row = self._add_row(
-                form, row,
+                form,
+                row,
                 "002B.002  Testeros (espesor)",
                 cb_testeros,
                 action_widget=offer_btn("Camisa 002B: Testeros"),
             )
 
-            # --- 002B.003 VENTANA INSPECCIÓN ---
-            row = self._add_section_title(form, row, "002B.003  Ventana de inspección")
-            cb_win = ttk.Combobox(form, textvariable=self.v_002B_ventana_inspeccion, values=yesno, state="normal")
+            cb_win = ttk.Combobox(form, textvariable=self.v_002B_ventana_inspeccion, values=yesno, state="readonly")
             row = self._add_row(
-                form, row,
-                "002B.003  Ventana inspección (lleva)",
+                form,
+                row,
+                "002B.003  Ventana inspección",
                 cb_win,
                 action_widget=offer_btn("Camisa 002B: Ventana inspección"),
             )
 
-            # --- 002B.004 BOCA ENTRADA ---
-            row = self._build_boca_block(form, row, prefix="in", title="002B.004  Boca entrada")
-
-            # --- 002B.005 BOCA SALIDA ---
-            row = self._build_boca_block(form, row, prefix="out", title="002B.005  Boca salida")
-
-            # --- 002B.006 MANGONES INTERMEDIOS (chapa sujeción) ---
-            row = self._add_section_title(form, row, "002B.006  Mangones intermedios")
-            cb_suj = ttk.Combobox(form, textvariable=self.v_002B_suj_mangon_intermedio, values=yesno, state="normal")
+            cb_suj = ttk.Combobox(form, textvariable=self.v_002B_suj_mangon_intermedio, values=yesno, state="readonly")
             row = self._add_row(
-                form, row,
-                "002B.006  Chapa sujeción mangón intermedio",
+                form,
+                row,
+                "002B.004  Chapa sujeción mangón intermedio",
                 cb_suj,
                 action_widget=offer_btn("Camisa 002B: Sujeción mangón intermedio"),
             )
+
+            row = self._build_boca_block(form, row, prefix="in", title="002B.005  Boca entrada")
+            row = self._build_boca_block(form, row, prefix="out", title="002B.006  Boca salida")
 
     def _build_conduccion(self):
         form = self._make_form("PARTE 003 – CONDUCCIÓN")
@@ -1634,10 +1502,10 @@ class SinfinWindow(tk.Toplevel):
 
     def _apply_pending_style(self):
         """
-        Si está pendiente de medir, intentamos marcar la Longitud entre testeros en rojo.
-        (En algunos temas de Windows el foreground del Combobox no cambia; en ese caso al menos
-        queda indicado por la casilla y por el hint/calculo.)
-        """
+    Si está pendiente de medir, intentamos marcar la Longitud entre testeros en rojo.
+    (En algunos temas de Windows el foreground del Combobox no cambia; en ese caso al menos
+    queda indicado por la casilla y por el hint/calculo.)
+    """
         if self.cb_long_test:
             self.cb_long_test.configure(
                 style="Pending.TCombobox" if self.v_pendiente_medir.get() else "Normal.TCombobox")
@@ -1903,18 +1771,11 @@ class SinfinWindow(tk.Toplevel):
             d.get("rodamiento_conducido", self.v_rod_conducido.get()))
 
         # ---------------- BOCAS (entrada / salida) ----------------
-        def _load_boca(prefix: str, key: str, default: str):
-            db_key = f"boca_{prefix}_{key}"
-            val = d.get(db_key, None)
-
-            # Si no existe en DB o viene vacío, NO machacamos -> ponemos default
-            if val is None or str(val).strip() == "":
-                val = default
-
-            self.bocas[prefix][key].set(str(val))
+        def _load_boca(prefix: str, key: str, default: str = ""):
+            self.bocas[prefix][key].set(str(d.get(f"boca_{prefix}_{key}", default)))
 
         for p in ("in", "out"):
-            _load_boca(p, "lleva", "Sí")
+            _load_boca(p, "lleva", "No")
             _load_boca(p, "cant", "1")
             _load_boca(p, "altura", "")
             _load_boca(p, "angulo", "0")
@@ -1929,7 +1790,6 @@ class SinfinWindow(tk.Toplevel):
             _load_boca(p, "final_alto", "")
 
             _load_boca(p, "offset_testero", "")
-
             
         self._on_eje_od_changed()
         self._auto_from_tubo()
@@ -1999,30 +1859,34 @@ class SinfinWindow(tk.Toplevel):
             "posicion_motor": self.v_pos_motor.get().strip(),
             "rodamiento_conducido": self.v_rod_conducido.get().strip(),
             
+                        # ---------------- BOCAS (entrada / salida) ----------------
+            "boca_in_lleva": self.bocas["in"]["lleva"].set(d.get("boca_in_lleva") or "Sí"),
+            "boca_in_cant": self.bocas["in"]["cant"].set(d.get("boca_in_cant") or "1"),
+            "boca_in_altura": self.bocas["in"]["altura"].get().strip(),
+            "boca_in_angulo": self.bocas["in"]["angulo"].get().strip(),
+            "boca_in_tipo": self.bocas["in"]["tipo"].get().strip(),
+            "boca_in_diam_arranque": self.bocas["in"]["diam_arranque"].get().strip(),
+            "boca_in_diam_final": self.bocas["in"]["diam_final"].get().strip(),
+            "boca_in_arranque_ancho": self.bocas["in"]["arranque_ancho"].get().strip(),
+            "boca_in_arranque_alto": self.bocas["in"]["arranque_alto"].get().strip(),
+            "boca_in_final_ancho": self.bocas["in"]["final_ancho"].get().strip(),
+            "boca_in_final_alto": self.bocas["in"]["final_alto"].get().strip(),
+            "boca_in_offset_testero": self.bocas["in"]["offset_testero"].get().strip(),
+
+            "boca_out_lleva": self.bocas["out"]["lleva"].set(d.get("boca_out_lleva") or "Sí"),
+            "boca_out_cant": self.bocas["out"]["cant"].set(d.get("boca_out_cant") or "1"),
+            "boca_out_altura": self.bocas["out"]["altura"].get().strip(),
+            "boca_out_angulo": self.bocas["out"]["angulo"].get().strip(),
+            "boca_out_tipo": self.bocas["out"]["tipo"].get().strip(),
+            "boca_out_diam_arranque": self.bocas["out"]["diam_arranque"].get().strip(),
+            "boca_out_diam_final": self.bocas["out"]["diam_final"].get().strip(),
+            "boca_out_arranque_ancho": self.bocas["out"]["arranque_ancho"].get().strip(),
+            "boca_out_arranque_alto": self.bocas["out"]["arranque_alto"].get().strip(),
+            "boca_out_final_ancho": self.bocas["out"]["final_ancho"].get().strip(),
+            "boca_out_final_alto": self.bocas["out"]["final_alto"].get().strip(),
+            "boca_out_offset_testero": self.bocas["out"]["offset_testero"].get().strip(),
+
         }
-        
-        # ---------------- BOCAS (entrada / salida) ----------------
-        for p in ("in", "out"):
-            data[f"boca_{p}_lleva"] = (self.bocas[p]["lleva"].get().strip() or "Sí")
-            data[f"boca_{p}_cant"]  = (self.bocas[p]["cant"].get().strip()  or "1")
-
-            data[f"boca_{p}_lleva"] = (self.bocas[p]["lleva"].get().strip() or "Sí")
-            data[f"boca_{p}_cant"] = (self.bocas[p]["cant"].get().strip() or "")        
-
-            data[f"boca_{p}_altura"] = self.bocas[p]["altura"].get().strip()
-            data[f"boca_{p}_angulo"] = (self.bocas[p]["angulo"].get().strip() or "0")
-            data[f"boca_{p}_tipo"] = (self.bocas[p]["tipo"].get().strip() or "CIRCULAR")
-
-            data[f"boca_{p}_diam_arranque"] = self.bocas[p]["diam_arranque"].get().strip()
-            data[f"boca_{p}_diam_final"] = self.bocas[p]["diam_final"].get().strip()
-
-            data[f"boca_{p}_arranque_ancho"] = self.bocas[p]["arranque_ancho"].get().strip()
-            data[f"boca_{p}_arranque_alto"] = self.bocas[p]["arranque_alto"].get().strip()
-            data[f"boca_{p}_final_ancho"] = self.bocas[p]["final_ancho"].get().strip()
-            data[f"boca_{p}_final_alto"] = self.bocas[p]["final_alto"].get().strip()
-
-            data[f"boca_{p}_offset_testero"] = self.bocas[p]["offset_testero"].get().strip()
-
 
         con = connect()
         try:

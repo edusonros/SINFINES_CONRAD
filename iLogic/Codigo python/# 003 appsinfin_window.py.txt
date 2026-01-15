@@ -335,16 +335,14 @@ class SinfinWindow(tk.Toplevel):
     def _get_definicion_completa(self) -> dict:
         """
         Devuelve un dict con todos los parámetros necesarios para exportar a Inventor.
-        Rellena defaults si faltan (especialmente bocas) y solo valida lo imprescindible.
+        (Si falta alguno, lanzamos error con messagebox)
         """
-
         d = {
             "longitud_entre_testeros": self.v_long_test.get().strip(),
             "paso_espira": self.v_paso1.get().strip(),
             "diametro_tubo": self.v_eje_od.get().strip(),
             "espesor_tubo": self.v_eje_thk.get().strip(),
             "diametro_espira": self.v_diam_espira.get().strip(),
-
             "Largo": self.v_long_test.get().strip(),
             "Paso_Espira_01": self.v_paso1.get().strip(),
             "ø_Int_Espira_01": self.v_eje_od.get().strip(),
@@ -353,14 +351,13 @@ class SinfinWindow(tk.Toplevel):
             "Espesor_Espira_01": self.v_espesor_espira.get().strip(),
             "ø_Ext_Espira_01": self.v_diam_espira.get().strip(),
             "espesor_chapa": self.v_espesor_espira.get().strip(),
-
-            # --- GEOMETRÍA / FUNCIONAMIENTO ---
+                    # --- GEOMETRÍA / FUNCIONAMIENTO ---
             "angulo_inclinacion_deg": self.v_angulo_inclinacion.get().strip(),
             "sentido_material": self.v_sentido_material.get().strip(),
             "boca_entrada_general": self.v_boca_entrada_general.get().strip(),
             "cantidad_bocas_entrada": self.v_cant_bocas_entrada.get().strip(),
-
-            # --------- BOCAS (entrada / salida) ---------
+            
+                        # --------- BOCAS (entrada / salida) ---------
             "boca_in_lleva": self.bocas["in"]["lleva"].get().strip(),
             "boca_in_cant": self.bocas["in"]["cant"].get().strip(),
             "boca_in_altura": self.bocas["in"]["altura"].get().strip(),
@@ -387,78 +384,21 @@ class SinfinWindow(tk.Toplevel):
             "boca_out_final_alto": self.bocas["out"]["final_alto"].get().strip(),
             "boca_out_offset_testero": self.bocas["out"]["offset_testero"].get().strip(),
 
-            # opcional (DEJA SOLO UNA VEZ)
-            "espesor_testero": (
-                self.v_002A_testeros.get().strip()
-                or self.v_002B_testeros.get().strip()
-                or "10"
-            ),
+
+            # opcional
+            "espesor_testero": self.v_002A_testeros.get().strip() or self.v_002B_testeros.get().strip() or "10",
+            "espesor_testero": self.v_002A_testeros.get().strip()
+            or self.v_002B_testeros.get().strip()
+            or "10",            
         }
 
-        # ---------------- Normalización de BOCAS (no bloquear si faltan) ----------------
-        def _norm_num(x: str, default: str = "0") -> str:
-            x = (x or "").strip()
-            return x if x != "" else default
-
-        def _norm_text(x: str, default: str = "") -> str:
-            x = (x or "").strip()
-            return x if x != "" else default
-
-        for p in ("in", "out"):
-            lleva = _norm_text(d.get(f"boca_{p}_lleva"), "No")
-            tipo = _norm_text(d.get(f"boca_{p}_tipo"), "CIRCULAR")
-
-            d[f"boca_{p}_lleva"] = lleva
-            d[f"boca_{p}_tipo"] = tipo
-            d[f"boca_{p}_cant"] = _norm_num(d.get(f"boca_{p}_cant"), "1")
-            d[f"boca_{p}_angulo"] = _norm_num(d.get(f"boca_{p}_angulo"), "0")
-            d[f"boca_{p}_altura"] = _norm_num(d.get(f"boca_{p}_altura"), "0")
-            d[f"boca_{p}_offset_testero"] = _norm_num(d.get(f"boca_{p}_offset_testero"), "0")
-
-            # Si NO lleva boca => todo lo específico a "0"
-            if lleva != "Sí":
-                d[f"boca_{p}_diam_arranque"] = "0"
-                d[f"boca_{p}_diam_final"] = "0"
-                d[f"boca_{p}_arranque_ancho"] = "0"
-                d[f"boca_{p}_arranque_alto"] = "0"
-                d[f"boca_{p}_final_ancho"] = "0"
-                d[f"boca_{p}_final_alto"] = "0"
-                continue
-
-            # Si lleva: valida por tipo y rellena defaults
-            if tipo == "CIRCULAR":
-                d[f"boca_{p}_diam_arranque"] = _norm_num(d.get(f"boca_{p}_diam_arranque"), "0")
-                d[f"boca_{p}_diam_final"] = _norm_num(d.get(f"boca_{p}_diam_final"), "0")
-
-                d[f"boca_{p}_arranque_ancho"] = "0"
-                d[f"boca_{p}_arranque_alto"] = "0"
-                d[f"boca_{p}_final_ancho"] = "0"
-                d[f"boca_{p}_final_alto"] = "0"
-            else:  # RECTO
-                d[f"boca_{p}_arranque_ancho"] = _norm_num(d.get(f"boca_{p}_arranque_ancho"), "0")
-                d[f"boca_{p}_arranque_alto"] = _norm_num(d.get(f"boca_{p}_arranque_alto"), "0")
-                d[f"boca_{p}_final_ancho"] = _norm_num(d.get(f"boca_{p}_final_ancho"), "0")
-                d[f"boca_{p}_final_alto"] = _norm_num(d.get(f"boca_{p}_final_alto"), "0")
-
-                d[f"boca_{p}_diam_arranque"] = "0"
-                d[f"boca_{p}_diam_final"] = "0"
-
-        # ---------------- Validación: SOLO lo imprescindible ----------------
-        obligatorios = [
-            "longitud_entre_testeros",
-            "paso_espira",
-            "diametro_tubo",
-            "espesor_tubo",
-            "diametro_espira",
-            "espesor_testero",
-        ]
-
-        faltan = [k for k in obligatorios if not str(d.get(k, "")).strip()]
+        # Validación rápida
+        faltan = [k for k, v in d.items() if not str(v).strip()]
         if faltan:
-            raise ValueError("Faltan datos para generar planos: " + ", ".join(faltan))
+            raise ValueError(
+                "Faltan datos para generar planos: " + ", ".join(faltan))
 
         return d
-
 
     def _on_generar_planos(self):
         try:
@@ -833,13 +773,12 @@ class SinfinWindow(tk.Toplevel):
             width=18,
         )
 
-        # Validación: solo números >= 1
+        # Validación: solo números >=1
         def _validate(P):
             return P == "" or (P.isdigit() and int(P) >= 1)
 
         vcmd = (parent.register(_validate), "%P")
         cb.configure(validate="key", validatecommand=vcmd)
-
         return cb
 
     def _add_section_title(self, form: ttk.Frame, row: int, title: str) -> int:
